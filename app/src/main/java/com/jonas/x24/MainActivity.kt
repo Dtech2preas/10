@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var commandManager: CommandManager
     private lateinit var tvLog: TextView
     private lateinit var btnTalk: Button
+    private lateinit var btnChangeVoice: Button
 
     // Keep limited history to avoid token limits
     private val history = mutableListOf<Message>()
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         tvLog = findViewById(R.id.tvLog)
         btnTalk = findViewById(R.id.btnTalk)
+        btnChangeVoice = findViewById(R.id.btnChangeVoice)
 
         commandManager = CommandManager(this)
         tts = TextToSpeech(this, this)
@@ -53,6 +55,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             } else {
                 log("Speech recognition not available on this device.")
             }
+        }
+
+        btnChangeVoice.setOnClickListener {
+            showVoiceSelectionDialog()
         }
     }
 
@@ -151,6 +157,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    private fun showVoiceSelectionDialog() {
+        try {
+            val voices = tts.voices.filter { it.locale.language == "en" }.sortedBy { it.name }
+            val voiceNames = voices.map {
+                val type = if (it.isNetworkConnectionRequired) "Network" else "Local"
+                "${it.name} ($type)"
+            }.toTypedArray()
+
+            val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+            builder.setTitle("Select Voice")
+            builder.setItems(voiceNames) { _, which ->
+                val selectedVoice = voices[which]
+                tts.voice = selectedVoice
+                log("Voice set to: ${selectedVoice.name}")
+                speak("Voice updated. How does this sound?")
+            }
+            builder.show()
+        } catch (e: Exception) {
+            log("Error loading voices: ${e.message}")
+        }
+    }
+
     private fun speak(text: String) {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
@@ -182,8 +210,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                             tts.voice = targetVoice
                         }
                     }
-                    tts.setPitch(0.9f)
-                    tts.setSpeechRate(0.9f)
+                    tts.setPitch(1.0f)
+                    tts.setSpeechRate(1.0f)
                 } catch (e: Exception) {
                     // Fallback to defaults
                 }
