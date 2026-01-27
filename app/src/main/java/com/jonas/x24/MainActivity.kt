@@ -24,6 +24,7 @@ import com.jonas.x24.commands.CommandManager
 import com.jonas.x24.network.ChatRequest
 import com.jonas.x24.network.Message
 import com.jonas.x24.network.RetrofitClient
+import com.jonas.x24.network.TtsRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,7 @@ import java.util.Locale
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
+    private var mediaPlayer: android.media.MediaPlayer? = null
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var commandManager: CommandManager
     private lateinit var tvLog: TextView
@@ -304,7 +306,59 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(text: String) {
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        // Stop any current playback
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Stop local TTS
+        tts.stop()
+
+        // Azure TTS Call
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val responseBody = RetrofitClient.api.tts(TtsRequest(text))
+                val bytes = responseBody.bytes()
+
+                val tempFile = java.io.File.createTempFile("tts_audio", ".mp3", cacheDir)
+                java.io.FileOutputStream(tempFile).use { it.write(bytes) }
+
+                withContext(Dispatchers.Main) {
+                    playAudio(tempFile)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    log("Azure TTS Failed (${e.message}), falling back to local.")
+                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                }
+            }
+        }
+    }
+
+    private fun playAudio(file: java.io.File) {
+        try {
+            mediaPlayer = android.media.MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                prepare()
+                start()
+                setOnCompletionListener {
+                    it.release()
+                    mediaPlayer = null
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            log("Audio Playback Error: ${e.message}")
+            // Fallback if playback fails
+            tts.speak("Error playing audio.", TextToSpeech.QUEUE_FLUSH, null, null)
+        }
     }
 
     private fun log(text: String) {
@@ -366,6 +420,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             tts.stop()
             tts.shutdown()
         }
+        mediaPlayer?.release()
         speechRecognizer.destroy()
         super.onDestroy()
     }

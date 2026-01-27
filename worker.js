@@ -17,6 +17,44 @@ export default {
       try {
         const body = await request.json();
 
+        // --- TTS Handler ---
+        if (body.tts_text) {
+          const text = body.tts_text;
+          const voice = body.voice || 'en-US-AndrewMultilingualNeural';
+
+          if (!env.AZURE) {
+            throw new Error("Azure API Key (AZURE) is missing in secrets.");
+          }
+
+          const ssml = `<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='${voice}'>${text}</voice></speak>`;
+
+          const ttsResponse = await fetch("https://eastus.tts.speech.microsoft.com/cognitiveservices/v1", {
+            method: "POST",
+            headers: {
+              "Ocp-Apim-Subscription-Key": env.AZURE,
+              "Content-Type": "application/ssml+xml",
+              "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+              "User-Agent": "x24-Worker"
+            },
+            body: ssml
+          });
+
+          if (!ttsResponse.ok) {
+            const errorText = await ttsResponse.text();
+            throw new Error(`Azure TTS Error: ${ttsResponse.status} - ${errorText}`);
+          }
+
+          const audioBuffer = await ttsResponse.arrayBuffer();
+
+          return new Response(audioBuffer, {
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "Access-Control-Allow-Origin": "*"
+            }
+          });
+        }
+        // --- End TTS Handler ---
+
         // Default to the smartest text model
         let model = '@cf/meta/llama-3-8b-instruct';
         let messages = [];
