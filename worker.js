@@ -28,15 +28,25 @@ export default {
           messages = [{ role: 'user', content: body.prompt }];
         }
 
-        // Web Search Logic (Optional - kept from previous version)
-        if (body.web_search) {
-             const lastUserMsg = messages[messages.length - 1];
-             if (lastUserMsg && lastUserMsg.role === 'user') {
+        // Web Search Logic
+        // Trigger search if explicitly requested OR if the user message implies a search
+        const lastUserMsg = messages[messages.length - 1];
+        let performSearch = body.web_search || false;
+
+        if (lastUserMsg && lastUserMsg.role === 'user') {
+            let query = lastUserMsg.content;
+            if(Array.isArray(query)) query = query.find(p => p.type === 'text')?.text || "";
+
+            // Auto-detect search intent
+            const searchKeywords = ["search", "find", "google", "look up", "who is", "what is", "weather", "latest", "news"];
+            if (!performSearch && searchKeywords.some(kw => query.toLowerCase().includes(kw))) {
+                performSearch = true;
+            }
+
+            if (performSearch) {
                  try {
-                     let query = lastUserMsg.content;
-                     if(Array.isArray(query)) query = query.find(p => p.type === 'text')?.text || "";
                      const searchResults = await performWebSearch(query);
-                     const searchContext = `\n\n[Web Search Results]\n${searchResults}\n\n[Instruction]\nUse the search results above to answer the user's question.`;
+                     const searchContext = `\n\n[Web Search Results]\n${searchResults}\n\n[Instruction]\nUse the search results above to answer the user's question accurately.`;
 
                      if (typeof lastUserMsg.content === 'string') {
                          lastUserMsg.content += searchContext;
@@ -53,31 +63,41 @@ You are helpful, witty, and concise. You have direct control over the phone's ha
 
 PROTOCOL:
 When the user asks you to perform an action, you must include a special command tag in your response.
-The command format is: [[COMMAND:ACTION|VALUE]]
+The command format is: [[COMMAND:ACTION|VALUE]] or [[COMMAND:ACTION|VAL1|VAL2]]
 
 SUPPORTED ACTIONS:
 - Flashlight: [[COMMAND:FLASHLIGHT|ON]] or [[COMMAND:FLASHLIGHT|OFF]]
 - Bluetooth: [[COMMAND:BLUETOOTH|ON]] or [[COMMAND:BLUETOOTH|OFF]]
-- Wi-Fi: [[COMMAND:WIFI|ON]] or [[COMMAND:WIFI|OFF]]
+- Wi-Fi: [[COMMAND:WIFI|SETTINGS]] (Opens Wi-Fi settings)
 - Volume: [[COMMAND:VOLUME|UP]], [[COMMAND:VOLUME|DOWN]], [[COMMAND:VOLUME|MAX]], [[COMMAND:VOLUME|MUTE]]
 - Brightness: [[COMMAND:BRIGHTNESS|UP]], [[COMMAND:BRIGHTNESS|DOWN]], [[COMMAND:BRIGHTNESS|MAX]]
 - Open Apps: [[COMMAND:OPEN_APP|app name]] (e.g., [[COMMAND:OPEN_APP|whatsapp]])
 - Make Call: [[COMMAND:CALL|number]] (e.g., [[COMMAND:CALL|1234567890]])
 - Send SMS: [[COMMAND:SMS|number|message]] (e.g., [[COMMAND:SMS|1234567890|Hello there]])
-- Read Notifications: [[COMMAND:READ_NOTIFICATIONS|ALL]]
+- Camera: [[COMMAND:CAMERA|TAKE_PHOTO]] (Launches camera to take a picture)
+- Alarm: [[COMMAND:ALARM|HH:MM]] (e.g., [[COMMAND:ALARM|07:30]])
+- Timer: [[COMMAND:TIMER|seconds]] (e.g., [[COMMAND:TIMER|600]] for 10 mins)
+- Battery: [[COMMAND:BATTERY|LEVEL]] (Checks battery level)
+- Location: [[COMMAND:LOCATION|GET]] (Checks current location)
 
 EXAMPLES:
 User: "Turn on the flashlight"
 x24: "Accessing hardware controls. Flashlight enabled. [[COMMAND:FLASHLIGHT|ON]]"
 
-User: "Open YouTube"
-x24: "Launching YouTube for you. [[COMMAND:OPEN_APP|youtube]]"
+User: "Take a selfie"
+x24: "Say cheese! [[COMMAND:CAMERA|TAKE_PHOTO]]"
 
-User: "Call Mom"
-x24: "Dialing Mom now. [[COMMAND:CALL|Mom]]"
+User: "Set an alarm for 8 AM"
+x24: "Alarm set for 08:00. [[COMMAND:ALARM|08:00]]"
 
-User: "Hello"
-x24: "Systems online. Hello, I am x24. How can I assist you today?"
+User: "Where am I?"
+x24: "Let me check your coordinates. [[COMMAND:LOCATION|GET]]"
+
+User: "What's my battery?"
+x24: "Checking power levels. [[COMMAND:BATTERY|LEVEL]]"
+
+User: "Search for the latest iPhone news"
+x24: "Here is what I found about the iPhone... (uses search results)"
 
 Do not output the command tag if no action is needed. Just reply conversationally.`;
 
@@ -92,17 +112,14 @@ Do not output the command tag if no action is needed. Just reply conversationall
             throw new Error("⚠️ Configuration Error: Workers AI is not bound.");
         }
 
-        // Run Inference (Non-streaming for easier parsing on Android)
-        // We ask for a JSON response wrapper or just raw text. Raw text is easier with the tagging system.
+        // Run Inference
         const response = await env.AI.run(model, {
             messages,
-            stream: false // changed to false for Android
+            stream: false
         });
 
-        // The Llama 3 response object usually looks like { response: "..." }
         let replyText = response.response || "";
 
-        // Return JSON structure for the App
         return new Response(JSON.stringify({
             reply: replyText
         }), {
@@ -136,7 +153,7 @@ async function performWebSearch(query) {
         const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
         const response = await fetch(url, {
             headers: {
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
         });
 
@@ -144,6 +161,7 @@ async function performWebSearch(query) {
 
         const html = await response.text();
         const results = [];
+        // Improved Regex to capture snippets better
         const resultRegex = /<a[^>]*class="result__a"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
 
         let match;
@@ -151,8 +169,10 @@ async function performWebSearch(query) {
         while ((match = resultRegex.exec(html)) !== null && count < 3) {
             const title = match[1].replace(/<[^>]+>/g, "").trim();
             const snippet = match[2].replace(/<[^>]+>/g, "").trim();
-            results.push(`- **${title}**: ${snippet}`);
-            count++;
+            if(title && snippet) {
+                results.push(`- **${title}**: ${snippet}`);
+                count++;
+            }
         }
 
         if (results.length === 0) return "No relevant search results found.";
