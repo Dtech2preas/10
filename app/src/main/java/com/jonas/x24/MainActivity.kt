@@ -82,7 +82,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 btnTalk.text = "Processing..."
             }
             override fun onError(error: Int) {
-                log("Speech Error Code: $error")
+                if (error == SpeechRecognizer.ERROR_NO_MATCH) {
+                    val msg = "I didn't catch that, please try again."
+                    log(msg)
+                    speak(msg)
+                } else {
+                    log("Speech Error Code: $error")
+                }
                 btnTalk.text = "TALK"
             }
             override fun onResults(results: Bundle?) {
