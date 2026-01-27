@@ -64,7 +64,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
            Manifest.permission.SEND_SMS,
            Manifest.permission.BLUETOOTH,
            Manifest.permission.BLUETOOTH_ADMIN,
-           Manifest.permission.BLUETOOTH_CONNECT
+           Manifest.permission.BLUETOOTH_CONNECT,
+           Manifest.permission.ACCESS_FINE_LOCATION,
+           Manifest.permission.ACCESS_COARSE_LOCATION
        )
        ActivityCompat.requestPermissions(this, permissions, 101)
     }
@@ -125,19 +127,21 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = RetrofitClient.api.chat(ChatRequest(history))
+                val rawReply = response.reply
+
+                // Execute commands (background thread for Geocoder/etc)
+                val cleanReply = commandManager.executeCommand(rawReply)
 
                 withContext(Dispatchers.Main) {
-                    val rawReply = response.reply
-                    // Execute commands and clean text
-                    val cleanReply = commandManager.executeCommand(rawReply)
-
                     log("x24: $cleanReply")
-                    history.add(Message("assistant", rawReply))
+                    // Save the final spoken result to history so the AI knows the outcome
+                    history.add(Message("assistant", cleanReply))
 
                     speak(cleanReply)
                     btnTalk.text = "TALK"
                 }
             } catch (e: Exception) {
+                e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     log("Network Error: ${e.message}")
                     speak("I cannot reach the server right now.")
@@ -160,8 +164,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts.language = Locale.US
-            speak("Systems online. I am ready.")
+            val result = tts.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+               log("Language not supported")
+            } else {
+                // Try to improve voice quality
+                try {
+                    val voices = tts.voices
+                    if (voices != null) {
+                        // Look for a high quality voice or just a nice one
+                        val targetVoice = voices.find { it.name.contains("en-us-x-iom-network") }
+                            ?: voices.find { it.name.contains("en-us-x-tpd-network") }
+                            ?: voices.find { it.name.contains("en-us") && it.quality > 300 }
+                            ?: voices.find { it.locale == Locale.US }
+
+                        if (targetVoice != null) {
+                            tts.voice = targetVoice
+                        }
+                    }
+                    tts.setPitch(0.9f)
+                    tts.setSpeechRate(0.9f)
+                } catch (e: Exception) {
+                    // Fallback to defaults
+                }
+                speak("Systems online. I am ready.")
+            }
         } else {
             log("TTS Initialization failed!")
         }

@@ -6,12 +6,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
+import android.os.BatteryManager
+import android.provider.AlarmClock
+import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
-import android.widget.Toast
+import android.util.Log
 import androidx.core.app.ActivityCompat
+import java.util.Locale
 import java.util.regex.Pattern
 
 class CommandManager(private val context: Context) {
@@ -22,28 +29,37 @@ class CommandManager(private val context: Context) {
         val matcher = pattern.matcher(rawText)
 
         var cleanText = rawText
+        val additionalOutput = StringBuilder()
 
         while (matcher.find()) {
             val fullTag = matcher.group(0)
             val type = matcher.group(1)
             val valueString = matcher.group(2)
 
+            // Remove the tag from the spoken text, but we might append a result later
             cleanText = cleanText.replace(fullTag, "")
 
-            performAction(type, valueString)
+            val result = performAction(type, valueString)
+            if (!result.isNullOrEmpty()) {
+                additionalOutput.append(" ").append(result)
+            }
         }
 
-        return cleanText.trim()
+        return (cleanText + additionalOutput.toString()).trim()
     }
 
-    private fun performAction(type: String, valueString: String) {
+    private fun performAction(type: String, valueString: String): String? {
         try {
             when (type) {
                 "FLASHLIGHT" -> toggleFlashlight(valueString == "ON")
                 "BLUETOOTH" -> toggleBluetooth(valueString == "ON")
                 "VOLUME" -> adjustVolume(valueString)
                 "BRIGHTNESS" -> adjustBrightness(valueString)
-                "OPEN_APP" -> launchApp(valueString)
+                "OPEN_APP" -> {
+                     if (!launchApp(valueString)) {
+                         return "I couldn't find an app named $valueString."
+                     }
+                }
                 "CALL" -> makeCall(valueString)
                 "SMS" -> {
                     val parts = valueString.split("|")
@@ -51,11 +67,19 @@ class CommandManager(private val context: Context) {
                         sendSMS(parts[0], parts[1])
                     }
                 }
+                "CAMERA" -> launchCamera()
+                "ALARM" -> setAlarm(valueString)
+                "TIMER" -> setTimer(valueString)
+                "WIFI" -> openWifiSettings()
+                "BATTERY" -> return getBatteryLevel()
+                "LOCATION" -> return getLocation()
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(context, "Error executing $type: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("CommandManager", "Error executing $type", e)
+            return "I had trouble with that command."
         }
+        return null
     }
 
     private fun toggleFlashlight(enable: Boolean) {
@@ -67,8 +91,6 @@ class CommandManager(private val context: Context) {
     private fun toggleBluetooth(enable: Boolean) {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-             // In a real app we would request permission here, but this is a service class
-             // We rely on MainActivity to have requested it.
              return
         }
         if (enable) bluetoothAdapter?.enable() else bluetoothAdapter?.disable()
@@ -99,11 +121,10 @@ class CommandManager(private val context: Context) {
         Settings.System.putInt(resolver, Settings.System.SCREEN_BRIGHTNESS, current)
     }
 
-    private fun launchApp(appName: String) {
+    private fun launchApp(appName: String): Boolean {
         val pm = context.packageManager
         val packages = pm.getInstalledPackages(0)
 
-        // Simple fuzzy search
         val targetPkg = packages.find {
             it.applicationInfo.loadLabel(pm).toString().contains(appName, ignoreCase = true)
         }
@@ -112,9 +133,9 @@ class CommandManager(private val context: Context) {
             val intent = pm.getLaunchIntentForPackage(targetPkg.packageName)
             intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-        } else {
-            Toast.makeText(context, "App not found: $appName", Toast.LENGTH_SHORT).show()
+            return true
         }
+        return false
     }
 
     private fun makeCall(number: String) {
@@ -127,5 +148,89 @@ class CommandManager(private val context: Context) {
     private fun sendSMS(number: String, message: String) {
         val smsManager = SmsManager.getDefault()
         smsManager.sendTextMessage(number, null, message, null, null)
+    }
+
+    // New Features
+
+    private fun launchCamera() {
+        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    private fun setAlarm(timeString: String) {
+        // Expected format: HH:MM
+        val parts = timeString.split(":")
+        if (parts.size == 2) {
+            val hour = parts[0].toInt()
+            val minute = parts[1].toInt()
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_MESSAGE, "Set by x24")
+                putExtra(AlarmClock.EXTRA_HOUR, hour)
+                putExtra(AlarmClock.EXTRA_MINUTES, minute)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
+    }
+
+    private fun setTimer(secondsString: String) {
+        val seconds = secondsString.toIntOrNull() ?: 60
+        val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
+            putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+            putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    private fun openWifiSettings() {
+        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    private fun getBatteryLevel(): String {
+        val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        return "Your battery is at $level percent."
+    }
+
+    private fun getLocation(): String {
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return "I need location permissions to do that."
+        }
+
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        // Try GPS, then Network
+        var location: Location? = null
+        try {
+            location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (location == null) {
+                location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            }
+        } catch(e: Exception) {
+            Log.e("CommandManager", "Location error", e)
+        }
+
+        if (location != null) {
+            val geocoder = Geocoder(context, Locale.getDefault())
+            try {
+                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    // e.g. "Mountain View, California"
+                    val locStr = "${address.locality ?: "Unknown City"}, ${address.adminArea ?: ""}"
+                    return "You are currently in $locStr."
+                }
+            } catch (e: Exception) {
+                // Geocoder can fail
+            }
+            return "Your coordinates are ${location.latitude}, ${location.longitude}."
+        }
+
+        return "I couldn't determine your location."
     }
 }
