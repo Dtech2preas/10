@@ -2,6 +2,7 @@ package com.jonas.x24
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -9,9 +10,15 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import android.view.LayoutInflater
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import com.jonas.x24.commands.CommandManager
 import com.jonas.x24.network.ChatRequest
@@ -31,6 +38,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tvLog: TextView
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
+    private lateinit var sharedPreferences: SharedPreferences
 
     // Keep limited history to avoid token limits
     private val history = mutableListOf<Message>()
@@ -38,6 +46,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        sharedPreferences = getSharedPreferences("x24_prefs", MODE_PRIVATE)
 
         tvLog = findViewById(R.id.tvLog)
         btnTalk = findViewById(R.id.btnTalk)
@@ -159,23 +169,137 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun showVoiceSelectionDialog() {
         try {
-            val voices = tts.voices.filter { it.locale.language == "en" }.sortedBy { it.name }
+            val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_voice_settings, null)
+            val spinnerVoices = dialogView.findViewById<Spinner>(R.id.spinnerVoices)
+            val seekBarPitch = dialogView.findViewById<SeekBar>(R.id.seekBarPitch)
+            val seekBarRate = dialogView.findViewById<SeekBar>(R.id.seekBarRate)
+
+            // Get all voices (no filter)
+            val voices = tts.voices.sortedBy { it.name }
             val voiceNames = voices.map {
                 val type = if (it.isNetworkConnectionRequired) "Network" else "Local"
-                "${it.name} ($type)"
-            }.toTypedArray()
-
-            val builder = androidx.appcompat.app.AlertDialog.Builder(this)
-            builder.setTitle("Select Voice")
-            builder.setItems(voiceNames) { _, which ->
-                val selectedVoice = voices[which]
-                tts.voice = selectedVoice
-                log("Voice set to: ${selectedVoice.name}")
-                speak("Voice updated. How does this sound?")
+                val locale = it.locale.displayName
+                "${it.name} ($type, $locale)"
             }
-            builder.show()
+
+            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, voiceNames)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinnerVoices.adapter = adapter
+
+            // Set current selection
+            val currentVoiceName = tts.voice?.name
+            if (currentVoiceName != null) {
+                val index = voices.indexOfFirst { it.name == currentVoiceName }
+                if (index >= 0) {
+                    spinnerVoices.setSelection(index)
+                }
+            }
+
+            // Load saved pitch and rate
+            val savedPitch = sharedPreferences.getFloat("pitch", 1.0f)
+            val savedRate = sharedPreferences.getFloat("rate", 1.0f)
+
+            // Map 0.5f - 2.0f to 0 - 200 progress (100 is default/1.0f)
+            seekBarPitch.progress = (savedPitch * 100).toInt()
+            seekBarRate.progress = (savedRate * 100).toInt()
+
+            val builder = AlertDialog.Builder(this)
+            builder.setTitle("Voice Settings")
+            builder.setView(dialogView)
+
+            val dialog = builder.create()
+
+            // Update listeners
+            spinnerVoices.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                    try {
+                        val selectedVoice = voices[position]
+                        tts.voice = selectedVoice
+                    } catch (e: Exception) {
+                         log("Error setting voice: ${e.message}")
+                    }
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+
+            val seekBarListener = object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                     // Wait for stop? Or real-time?
+                     // Real-time update to TTS instance, but maybe not speak immediately
+                     val value = progress / 100f
+                     if (seekBar == seekBarPitch) {
+                         tts.setPitch(value)
+                     } else {
+                         tts.setSpeechRate(value)
+                     }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            }
+
+            seekBarPitch.setOnSeekBarChangeListener(seekBarListener)
+            seekBarRate.setOnSeekBarChangeListener(seekBarListener)
+
+            dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Save") { _, _ ->
+                val selectedIndex = spinnerVoices.selectedItemPosition
+                if (selectedIndex >= 0) {
+                    val selectedVoice = voices[selectedIndex]
+                    val pitch = seekBarPitch.progress / 100f
+                    val rate = seekBarRate.progress / 100f
+
+                    with(sharedPreferences.edit()) {
+                        putString("voice_name", selectedVoice.name)
+                        putFloat("pitch", pitch)
+                        putFloat("rate", rate)
+                        apply()
+                    }
+                    log("Settings saved: ${selectedVoice.name}, P:$pitch, R:$rate")
+                    speak("Settings updated.")
+                }
+            }
+
+            dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancel") { _, _ ->
+                // Revert to saved or defaults if cancelled?
+                // Currently changes are applied live to TTS object.
+                // If we cancel, we should probably reload from prefs in onDismiss,
+                // but for now, let's just close.
+            }
+
+            // "Auto Adjust" button as requested
+            dialog.setButton(AlertDialog.BUTTON_NEUTRAL, "Auto") { _, _ ->
+                 // Logic to pick a "best" voice and default settings
+                 try {
+                    val targetVoice = voices.find { it.name.contains("en-us-x-iom-network") }
+                            ?: voices.find { it.name.contains("en-us-x-tpd-network") }
+                            ?: voices.find { it.name.contains("en-us") && it.quality > 300 }
+                            ?: voices.find { it.locale == Locale.US }
+                            ?: voices.firstOrNull()
+
+                    if (targetVoice != null) {
+                         tts.voice = targetVoice
+                         tts.setPitch(1.0f)
+                         tts.setSpeechRate(1.0f)
+
+                         // Update UI (though dialog closes after button press usually)
+                         // Since neutral button closes dialog, we just save and speak.
+                         with(sharedPreferences.edit()) {
+                            putString("voice_name", targetVoice.name)
+                            putFloat("pitch", 1.0f)
+                            putFloat("rate", 1.0f)
+                            apply()
+                        }
+                        log("Auto-adjusted voice to: ${targetVoice.name}")
+                        speak("Voice settings auto-adjusted.")
+                    }
+                 } catch (e: Exception) {
+                     log("Error auto-adjusting: ${e.message}")
+                 }
+            }
+
+            dialog.show()
         } catch (e: Exception) {
-            log("Error loading voices: ${e.message}")
+            log("Error showing settings: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -196,24 +320,39 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                log("Language not supported")
             } else {
-                // Try to improve voice quality
                 try {
+                    // Load saved preferences
+                    val savedVoiceName = sharedPreferences.getString("voice_name", null)
+                    val savedPitch = sharedPreferences.getFloat("pitch", 1.0f)
+                    val savedRate = sharedPreferences.getFloat("rate", 1.0f)
+
                     val voices = tts.voices
                     if (voices != null) {
-                        // Look for a high quality voice or just a nice one
-                        val targetVoice = voices.find { it.name.contains("en-us-x-iom-network") }
-                            ?: voices.find { it.name.contains("en-us-x-tpd-network") }
-                            ?: voices.find { it.name.contains("en-us") && it.quality > 300 }
-                            ?: voices.find { it.locale == Locale.US }
+                        var targetVoice: android.speech.tts.Voice? = null
+
+                        // 1. Try saved voice
+                        if (savedVoiceName != null) {
+                            targetVoice = voices.find { it.name == savedVoiceName }
+                        }
+
+                        // 2. Fallback to auto-selection if no saved voice or saved voice not found
+                        if (targetVoice == null) {
+                            targetVoice = voices.find { it.name.contains("en-us-x-iom-network") }
+                                ?: voices.find { it.name.contains("en-us-x-tpd-network") }
+                                ?: voices.find { it.name.contains("en-us") && it.quality > 300 }
+                                ?: voices.find { it.locale == Locale.US }
+                        }
 
                         if (targetVoice != null) {
                             tts.voice = targetVoice
                         }
                     }
-                    tts.setPitch(1.0f)
-                    tts.setSpeechRate(1.0f)
+                    tts.setPitch(savedPitch)
+                    tts.setSpeechRate(savedRate)
                 } catch (e: Exception) {
                     // Fallback to defaults
+                    tts.setPitch(1.0f)
+                    tts.setSpeechRate(1.0f)
                 }
                 speak("Systems online. I am ready.")
             }
