@@ -2,9 +2,9 @@ name: Android Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "x24-android-assistant-12186889678422729937" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "x24-android-assistant-12186889678422729937" ]
 
 jobs:
   build:
