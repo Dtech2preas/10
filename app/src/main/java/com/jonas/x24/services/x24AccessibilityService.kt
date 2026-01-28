@@ -80,6 +80,7 @@ class x24AccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return "No screen content available."
         val builder = StringBuilder()
         traverseNode(root, builder)
+        root.recycle()
         return builder.toString()
     }
 
@@ -105,7 +106,9 @@ class x24AccessibilityService : AccessibilityService() {
         }
 
         for (i in 0 until node.childCount) {
-            traverseNode(node.getChild(i), builder)
+            val child = node.getChild(i)
+            traverseNode(child, builder)
+            child?.recycle()
         }
     }
 
@@ -113,13 +116,25 @@ class x24AccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return false
         val nodes = root.findAccessibilityNodeInfosByText(targetText)
 
+        var clicked = false
         // 1. Exact/Contains Match
-        for (node in nodes) {
-            if (performClick(node)) return true
+        if (nodes != null) {
+            for (node in nodes) {
+                if (!clicked && performClick(node)) {
+                    clicked = true
+                }
+                node.recycle()
+            }
+        }
+        if (clicked) {
+            root.recycle()
+            return true
         }
 
         // 2. Manual Traversal (fallback for complex hierarchies)
-        return traverseAndClick(root, targetText)
+        val result = traverseAndClick(root, targetText)
+        root.recycle()
+        return result
     }
 
     private fun traverseAndClick(node: AccessibilityNodeInfo?, target: String): Boolean {
@@ -133,7 +148,12 @@ class x24AccessibilityService : AccessibilityService() {
         }
 
         for (i in 0 until node.childCount) {
-            if (traverseAndClick(node.getChild(i), target)) return true
+            val child = node.getChild(i)
+            if (traverseAndClick(child, target)) {
+                child?.recycle()
+                return true
+            }
+            child?.recycle()
         }
         return false
     }
@@ -142,10 +162,14 @@ class x24AccessibilityService : AccessibilityService() {
         if (node.isClickable) {
             return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
-        // Try parent
+        // Try parent - careful here, we cannot easily recycle parent if we got it via getParent()
+        // unless we strictly manage it.
+        // However, node.parent returns a NEW node.
         val parent = node.parent
         if (parent != null) {
-            return performClick(parent)
+            val result = performClick(parent)
+            parent.recycle()
+            return result
         }
         return false
     }
@@ -154,11 +178,16 @@ class x24AccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return false
         val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
-        if (focus != null && focus.isEditable) {
-            val arguments = Bundle()
-            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-            return focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        var result = false
+        if (focus != null) {
+            if (focus.isEditable) {
+                val arguments = Bundle()
+                arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                result = focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            }
+            focus.recycle()
         }
-        return false
+        root.recycle()
+        return result
     }
 }

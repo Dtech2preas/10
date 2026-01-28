@@ -233,6 +233,7 @@ class CommandManager(private val context: Context) {
             val intent = pm.getLaunchIntentForPackage(targetPkg.packageName)
             intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+            try { Thread.sleep(3000) } catch (e: Exception) {}
             return true
         }
         return false
