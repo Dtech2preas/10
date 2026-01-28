@@ -29,6 +29,16 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginEnd="16dp"/>
 
+    <Button
+        android:id="@+id/btnOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Overlay"
+        app:layout_constraintTop_toTopOf="@id/tvStatus"
+        app:layout_constraintBottom_toBottomOf="@id/tvStatus"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="16dp"/>
+
     <ScrollView
         android:layout_width="0dp"
         android:layout_height="0dp"

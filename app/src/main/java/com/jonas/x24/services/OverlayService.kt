@@ -1,0 +1,258 @@
+package com.jonas.x24.services
+
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.graphics.PixelFormat
+import android.media.MediaPlayer
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.util.Log
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.Toast
+import com.jonas.x24.R
+import com.jonas.x24.commands.CommandManager
+import com.jonas.x24.network.ChatRequest
+import com.jonas.x24.network.Message
+import com.jonas.x24.network.RetrofitClient
+import com.jonas.x24.network.TtsRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+
+class OverlayService : Service(), TextToSpeech.OnInitListener {
+
+    private lateinit var windowManager: WindowManager
+    private lateinit var floatingView: View
+    private lateinit var speechRecognizer: SpeechRecognizer
+    private lateinit var tts: TextToSpeech
+    private lateinit var commandManager: CommandManager
+    private var mediaPlayer: MediaPlayer? = null
+    private var isListening = false
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        commandManager = CommandManager(this)
+        tts = TextToSpeech(this, this)
+
+        setupFloatingView()
+        setupSpeechRecognizer()
+    }
+
+    private fun setupFloatingView() {
+        // Build view programmatically to avoid missing XML resource
+        val icon = ImageView(this)
+        icon.setImageResource(R.mipmap.ic_launcher_round)
+        icon.alpha = 0.8f
+        floatingView = icon
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = 0
+        params.y = 100
+
+        // Drag Logic
+        floatingView.setOnTouchListener(object : View.OnTouchListener {
+            private var initialX = 0
+            private var initialY = 0
+            private var initialTouchX = 0f
+            private var initialTouchY = 0f
+            private var isClick = false
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = params.x
+                        initialY = params.y
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        isClick = true
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - initialTouchX).toInt()
+                        val dy = (event.rawY - initialTouchY).toInt()
+                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) isClick = false
+                        params.x = initialX + dx
+                        params.y = initialY + dy
+                        windowManager.updateViewLayout(floatingView, params)
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (isClick) {
+                            toggleListening()
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        windowManager.addView(floatingView, params)
+    }
+
+    private fun setupSpeechRecognizer() {
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                Toast.makeText(this@OverlayService, "Listening...", Toast.LENGTH_SHORT).show()
+                (floatingView as ImageView).alpha = 1.0f
+            }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                (floatingView as ImageView).alpha = 0.5f // Processing
+            }
+            override fun onError(error: Int) {
+                isListening = false
+                (floatingView as ImageView).alpha = 0.8f
+                // speak("Error $error")
+            }
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    processInput(matches[0])
+                }
+                (floatingView as ImageView).alpha = 0.8f
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+    }
+
+    private fun toggleListening() {
+        if (isListening) {
+            speechRecognizer.stopListening()
+            isListening = false
+        } else {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            try {
+                speechRecognizer.startListening(intent)
+                isListening = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun processInput(userText: String) {
+        // 1. Get Screen Context
+        val screenContext = x24AccessibilityService.instance?.getScreenContext() ?: "No screen context."
+
+        // 2. Format Message
+        val prompt = "[SCREEN_CONTEXT: $screenContext]\n\nUser: $userText"
+        Log.d("Overlay", "Prompt: $prompt")
+
+        // 3. Send to AI
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // We create a fresh history or use a singleton?
+                // For now, fresh single-turn prompt to avoid carrying stale context.
+                val messages = listOf(Message("user", prompt))
+                val response = RetrofitClient.api.chat(ChatRequest(messages))
+
+                val reply = response.reply
+                val cleanReply = commandManager.executeCommand(reply)
+
+                withContext(Dispatchers.Main) {
+                    speak(cleanReply)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    speak("Connection error.")
+                }
+            }
+        }
+    }
+
+    // Reuse TTS logic
+    private fun speak(text: String) {
+        // Stop any current playback
+        try {
+            if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (e: Exception) {}
+
+        tts.stop()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val responseBody = RetrofitClient.api.tts(TtsRequest(text))
+                val bytes = responseBody.bytes()
+                val tempFile = java.io.File.createTempFile("tts_overlay", ".mp3", cacheDir)
+                java.io.FileOutputStream(tempFile).use { it.write(bytes) }
+
+                withContext(Dispatchers.Main) {
+                    playAudio(tempFile)
+                }
+            } catch (e: Exception) {
+                 withContext(Dispatchers.Main) {
+                     tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                 }
+            }
+        }
+    }
+
+    private fun playAudio(file: java.io.File) {
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                prepare()
+                start()
+                setOnCompletionListener {
+                    it.release()
+                    mediaPlayer = null
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) { }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) tts.language = Locale.US
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::floatingView.isInitialized) windowManager.removeView(floatingView)
+        speechRecognizer.destroy()
+        tts.shutdown()
+        mediaPlayer?.release()
+    }
+}
