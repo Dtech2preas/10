@@ -16,13 +16,13 @@ data class ActiveNotification(
 class x24NotificationService : NotificationListenerService() {
 
     companion object {
-        val activeNotifications = mutableListOf<ActiveNotification>()
+        val trackedNotifications = mutableListOf<ActiveNotification>()
 
         fun getContextString(): String {
-            synchronized(activeNotifications) {
-                if (activeNotifications.isEmpty()) return "No active notifications."
+            synchronized(trackedNotifications) {
+                if (trackedNotifications.isEmpty()) return "No active notifications."
                 // Limit to last 5 to avoid overflowing context
-                val recent = activeNotifications.sortedByDescending { it.timestamp }.take(5)
+                val recent = trackedNotifications.sortedByDescending { it.timestamp }.take(5)
                 return recent.joinToString("\n") {
                     "- [${it.packageName}]: ${it.title} says '${it.text}'"
                 }
@@ -48,9 +48,9 @@ class x24NotificationService : NotificationListenerService() {
         )
 
         // Update list
-        synchronized(activeNotifications) {
-            activeNotifications.removeAll { it.key == sbn.key }
-            activeNotifications.add(notification)
+        synchronized(trackedNotifications) {
+            trackedNotifications.removeAll { it.key == sbn.key }
+            trackedNotifications.add(notification)
         }
 
         Log.d("x24Notify", "Notification: $title - $text")
@@ -67,8 +67,8 @@ class x24NotificationService : NotificationListenerService() {
         super.onNotificationRemoved(sbn)
         if (sbn == null) return
 
-        synchronized(activeNotifications) {
-            activeNotifications.removeAll { it.key == sbn.key }
+        synchronized(trackedNotifications) {
+            trackedNotifications.removeAll { it.key == sbn.key }
         }
     }
 }
