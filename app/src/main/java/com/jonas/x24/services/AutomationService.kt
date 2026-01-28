@@ -68,8 +68,14 @@ class AutomationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!isRunning) {
-            val notification = createNotification()
-            startForeground(1, notification)
+            try {
+                val notification = createNotification()
+                startForeground(1, notification)
+            } catch (e: Exception) {
+                Log.e("x24Auto", "Failed to start foreground: ${e.message}")
+                e.printStackTrace()
+                stopSelf()
+            }
 
             // Register Receivers
             val battFilter = IntentFilter().apply {
