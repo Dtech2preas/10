@@ -198,11 +198,23 @@ class AutomationService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val listenIntent = Intent(this, MainActivity::class.java).apply {
+            putExtra("START_LISTENING", true)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val listenPendingIntent = PendingIntent.getActivity(
+            this,
+            1,
+            listenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("x24 Service")
             .setContentText("Automation running in background")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_btn_speak_now, "Talk", listenPendingIntent)
             .build()
     }
 }

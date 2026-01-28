@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -41,7 +43,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tvLog: TextView
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
-    private lateinit var btnServices: Button
+    private lateinit var btnOverlay: Button
     private lateinit var sharedPreferences: SharedPreferences
 
     // Keep limited history to avoid token limits
@@ -56,7 +58,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tvLog = findViewById(R.id.tvLog)
         btnTalk = findViewById(R.id.btnTalk)
         btnChangeVoice = findViewById(R.id.btnChangeVoice)
-        // btnServices would be new, or we add to UI. For now, we auto-start services.
+        btnOverlay = findViewById(R.id.btnOverlay)
 
         commandManager = CommandManager(this)
         tts = TextToSpeech(this, this)
@@ -78,6 +80,43 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnChangeVoice.setOnClickListener {
             showVoiceSelectionDialog()
         }
+
+        btnOverlay.setOnClickListener {
+            toggleOverlayService()
+        }
+
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("START_LISTENING", false) == true) {
+            // Delay slightly to ensure UI is ready
+            btnTalk.postDelayed({
+                if (SpeechRecognizer.isRecognitionAvailable(this)) {
+                    startListening()
+                }
+            }, 500)
+        }
+    }
+
+    private fun toggleOverlayService() {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName"))
+            startActivity(intent)
+            log("Please grant 'Display over other apps' permission.")
+            return
+        }
+
+        val intent = Intent(this, com.jonas.x24.services.OverlayService::class.java)
+        startService(intent)
+        log("Overlay Service Started. Look for the floating icon.")
     }
 
     // Check Accessibility Status

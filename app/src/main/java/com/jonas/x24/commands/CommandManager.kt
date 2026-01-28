@@ -92,6 +92,8 @@ class CommandManager(private val context: Context) {
                 "SCREENSHOT" -> performGlobal(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
                 "SCROLL" -> scroll(valueString)
                 "CLICK" -> click(valueString)
+                "CLICK_TEXT" -> clickText(valueString)
+                "INPUT_TEXT" -> inputText(valueString)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -129,9 +131,22 @@ class CommandManager(private val context: Context) {
                 val y = parts[1].toFloatOrNull() ?: 500f
                 service.click(x, y)
             }
-        } else {
-            // TODO: Text-based click (Level 2 polish)
         }
+    }
+
+    private fun clickText(text: String) {
+        val service = x24AccessibilityService.instance
+        if (service?.clickNodeByText(text) == true) {
+            // Success
+        } else {
+             // Fallback or Log
+             Log.w("Cmd", "Could not find text: $text")
+        }
+    }
+
+    private fun inputText(text: String) {
+        val service = x24AccessibilityService.instance
+        service?.inputText(text)
     }
 
     private fun controlMedia(action: String) {
