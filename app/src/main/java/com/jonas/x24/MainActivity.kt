@@ -25,6 +25,7 @@ import com.jonas.x24.network.ChatRequest
 import com.jonas.x24.network.Message
 import com.jonas.x24.network.RetrofitClient
 import com.jonas.x24.network.TtsRequest
+import com.jonas.x24.services.AutomationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tvLog: TextView
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
+    private lateinit var btnServices: Button
     private lateinit var sharedPreferences: SharedPreferences
 
     // Keep limited history to avoid token limits
@@ -54,12 +56,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tvLog = findViewById(R.id.tvLog)
         btnTalk = findViewById(R.id.btnTalk)
         btnChangeVoice = findViewById(R.id.btnChangeVoice)
+        // btnServices would be new, or we add to UI. For now, we auto-start services.
 
         commandManager = CommandManager(this)
         tts = TextToSpeech(this, this)
 
         setupPermissions()
         setupSpeechRecognizer()
+
+        // Start Automation Service
+        startForegroundService(Intent(this, AutomationService::class.java))
 
         btnTalk.setOnClickListener {
             if (SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -74,12 +80,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    // Check Accessibility Status
+    private fun checkAccessibilityPermission(): Boolean {
+        var accessEnabled = 0
+        try {
+            accessEnabled = android.provider.Settings.Secure.getInt(
+                this.contentResolver,
+                android.provider.Settings.Secure.ACCESSIBILITY_ENABLED
+            )
+        } catch (e: android.provider.Settings.SettingNotFoundException) {
+            e.printStackTrace()
+        }
+
+        if (accessEnabled == 0) {
+            return false
+        } else {
+            val service = "${packageName}/${com.jonas.x24.services.x24AccessibilityService::class.java.canonicalName}"
+            val settingValue = android.provider.Settings.Secure.getString(
+                this.contentResolver,
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+            return settingValue?.contains(service) == true
+        }
+    }
+
     private fun setupPermissions() {
        val permissions = arrayOf(
            Manifest.permission.RECORD_AUDIO,
            Manifest.permission.CAMERA,
            Manifest.permission.CALL_PHONE,
            Manifest.permission.SEND_SMS,
+           Manifest.permission.RECEIVE_SMS,
+           Manifest.permission.READ_SMS,
            Manifest.permission.BLUETOOTH,
            Manifest.permission.BLUETOOTH_ADMIN,
            Manifest.permission.BLUETOOTH_CONNECT,
@@ -87,6 +119,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
            Manifest.permission.ACCESS_COARSE_LOCATION
        )
        ActivityCompat.requestPermissions(this, permissions, 101)
+
+       // Prompt for Accessibility if needed
+       if (!checkAccessibilityPermission()) {
+           // We could show a dialog here asking user to enable it
+           // For now, we just log it or rely on user knowing
+           log("TIP: Enable x24 Accessibility Service in Settings for full control.")
+       }
     }
 
     private fun setupSpeechRecognizer() {

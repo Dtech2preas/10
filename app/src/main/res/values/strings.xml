@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">x24</string>
+    <string name="accessibility_service_description">Allows x24 to control your device, click buttons, and read screen content to assist you.</string>
 </resources>

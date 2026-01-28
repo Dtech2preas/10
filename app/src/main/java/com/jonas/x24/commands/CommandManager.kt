@@ -1,6 +1,7 @@
 package com.jonas.x24.commands
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityService
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
@@ -17,9 +18,12 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
 import android.util.Log
+import android.view.KeyEvent
 import androidx.core.app.ActivityCompat
+import com.jonas.x24.services.x24AccessibilityService
 import java.util.Locale
 import java.util.regex.Pattern
+import kotlin.math.abs
 
 class CommandManager(private val context: Context) {
 
@@ -36,7 +40,7 @@ class CommandManager(private val context: Context) {
             val type = matcher.group(1)
             val valueString = matcher.group(2)
 
-            // Remove the tag from the spoken text, but we might append a result later
+            // Remove the tag from the spoken text
             cleanText = cleanText.replace(fullTag, "")
 
             val result = performAction(type, valueString)
@@ -51,10 +55,16 @@ class CommandManager(private val context: Context) {
     private fun performAction(type: String, valueString: String): String? {
         try {
             when (type) {
+                // Hardware / System
                 "FLASHLIGHT" -> toggleFlashlight(valueString == "ON")
                 "BLUETOOTH" -> toggleBluetooth(valueString == "ON")
                 "VOLUME" -> adjustVolume(valueString)
                 "BRIGHTNESS" -> adjustBrightness(valueString)
+                "WIFI" -> openWifiSettings() // TODO: Try Accessibility toggle if visible
+                "BATTERY" -> return getBatteryLevel()
+                "LOCATION" -> return getLocation()
+
+                // Apps / Communication
                 "OPEN_APP" -> {
                      if (!launchApp(valueString)) {
                          return "I couldn't find an app named $valueString."
@@ -67,12 +77,21 @@ class CommandManager(private val context: Context) {
                         sendSMS(parts[0], parts[1])
                     }
                 }
+
+                // Media / Tools
                 "CAMERA" -> launchCamera()
                 "ALARM" -> setAlarm(valueString)
                 "TIMER" -> setTimer(valueString)
-                "WIFI" -> openWifiSettings()
-                "BATTERY" -> return getBatteryLevel()
-                "LOCATION" -> return getLocation()
+                "MEDIA" -> controlMedia(valueString)
+
+                // Accessibility / Navigation
+                "HOME" -> performGlobal(AccessibilityService.GLOBAL_ACTION_HOME)
+                "BACK" -> performGlobal(AccessibilityService.GLOBAL_ACTION_BACK)
+                "RECENTS" -> performGlobal(AccessibilityService.GLOBAL_ACTION_RECENTS)
+                "LOCK" -> performGlobal(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                "SCREENSHOT" -> performGlobal(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                "SCROLL" -> scroll(valueString)
+                "CLICK" -> click(valueString)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -82,10 +101,62 @@ class CommandManager(private val context: Context) {
         return null
     }
 
+    // --- Implementation Details ---
+
+    private fun performGlobal(action: Int) {
+        val service = x24AccessibilityService.instance
+        if (service != null) {
+            service.performGlobal(action)
+        } else {
+            Log.e("CommandManager", "Accessibility Service not connected.")
+        }
+    }
+
+    private fun scroll(direction: String) {
+        val service = x24AccessibilityService.instance
+        service?.scroll(direction)
+    }
+
+    private fun click(args: String) {
+        val service = x24AccessibilityService.instance
+        if (service == null) return
+
+        if (args.contains(",")) {
+            // Coordinate click: x,y
+            val parts = args.split(",")
+            if (parts.size == 2) {
+                val x = parts[0].toFloatOrNull() ?: 500f
+                val y = parts[1].toFloatOrNull() ?: 500f
+                service.click(x, y)
+            }
+        } else {
+            // TODO: Text-based click (Level 2 polish)
+        }
+    }
+
+    private fun controlMedia(action: String) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val eventTime = android.os.SystemClock.uptimeMillis()
+
+        val key = when(action) {
+            "PLAY", "PAUSE" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            "NEXT" -> KeyEvent.KEYCODE_MEDIA_NEXT
+            "PREVIOUS" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+            else -> return
+        }
+
+        audioManager.dispatchMediaKeyEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, key, 0))
+        audioManager.dispatchMediaKeyEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, key, 0))
+    }
+
     private fun toggleFlashlight(enable: Boolean) {
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = cameraManager.cameraIdList[0] // Usually back camera
-        cameraManager.setTorchMode(cameraId, enable)
+        try {
+             val cameraId = cameraManager.cameraIdList[0]
+             cameraManager.setTorchMode(cameraId, enable)
+        } catch (e: Exception) {
+             Log.e("Cmd", "Flashlight error", e)
+        }
     }
 
     private fun toggleBluetooth(enable: Boolean) {
@@ -125,8 +196,22 @@ class CommandManager(private val context: Context) {
         val pm = context.packageManager
         val packages = pm.getInstalledPackages(0)
 
-        val targetPkg = packages.find {
-            it.applicationInfo.loadLabel(pm).toString().contains(appName, ignoreCase = true)
+        // Exact match first
+        var targetPkg = packages.find {
+            it.applicationInfo.loadLabel(pm).toString().equals(appName, ignoreCase = true)
+        }
+
+        // Fuzzy match if exact fails
+        if (targetPkg == null) {
+            targetPkg = packages.maxByOrNull {
+                fuzzyScore(it.applicationInfo.loadLabel(pm).toString(), appName)
+            }
+
+            // Check if score is decent (arbitrary threshold)
+            val label = targetPkg?.applicationInfo?.loadLabel(pm)?.toString() ?: ""
+            if (fuzzyScore(label, appName) < 0.3) {
+                targetPkg = null // Too weak match
+            }
         }
 
         if (targetPkg != null) {
@@ -136,6 +221,21 @@ class CommandManager(private val context: Context) {
             return true
         }
         return false
+    }
+
+    // Simple similarity score (0.0 to 1.0)
+    private fun fuzzyScore(s1: String, s2: String): Double {
+        val longer = if (s1.length > s2.length) s1.lowercase() else s2.lowercase()
+        val shorter = if (s1.length > s2.length) s2.lowercase() else s1.lowercase()
+
+        if (longer.contains(shorter)) return 0.8 // High score for substring
+
+        // Very basic char match count
+        var matches = 0
+        for (char in shorter) {
+            if (longer.contains(char)) matches++
+        }
+        return matches.toDouble() / longer.length
     }
 
     private fun makeCall(number: String) {
@@ -150,8 +250,6 @@ class CommandManager(private val context: Context) {
         smsManager.sendTextMessage(number, null, message, null, null)
     }
 
-    // New Features
-
     private fun launchCamera() {
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -159,7 +257,6 @@ class CommandManager(private val context: Context) {
     }
 
     private fun setAlarm(timeString: String) {
-        // Expected format: HH:MM
         val parts = timeString.split(":")
         if (parts.size == 2) {
             val hour = parts[0].toInt()
@@ -204,7 +301,6 @@ class CommandManager(private val context: Context) {
         }
 
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        // Try GPS, then Network
         var location: Location? = null
         try {
             location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -221,13 +317,10 @@ class CommandManager(private val context: Context) {
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                 if (!addresses.isNullOrEmpty()) {
                     val address = addresses[0]
-                    // e.g. "Mountain View, California"
                     val locStr = "${address.locality ?: "Unknown City"}, ${address.adminArea ?: ""}"
                     return "You are currently in $locStr."
                 }
-            } catch (e: Exception) {
-                // Geocoder can fail
-            }
+            } catch (e: Exception) { }
             return "Your coordinates are ${location.latitude}, ${location.longitude}."
         }
 
