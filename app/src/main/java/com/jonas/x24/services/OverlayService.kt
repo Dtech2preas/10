@@ -8,11 +8,14 @@ import android.graphics.PixelFormat
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -100,7 +103,8 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - initialTouchX).toInt()
                         val dy = (event.rawY - initialTouchY).toInt()
-                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) isClick = false
+                        // Increased threshold to 30 to allow for slight movement during click
+                        if (Math.abs(dx) > 30 || Math.abs(dy) > 30) isClick = false
                         params.x = initialX + dx
                         params.y = initialY + dy
                         windowManager.updateViewLayout(floatingView, params)
@@ -223,7 +227,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                     tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "TTS_ID")
                  }
             }
         }
@@ -239,13 +243,28 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     it.release()
                     mediaPlayer = null
                     file.delete()
+                    // Restart listening after playback
+                    toggleListening()
                 }
             }
         } catch (e: Exception) { }
     }
 
     override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) tts.language = Locale.US
+        if (status == TextToSpeech.SUCCESS) {
+            tts.language = Locale.US
+            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+
+                override fun onDone(utteranceId: String?) {
+                    Handler(Looper.getMainLooper()).post {
+                        toggleListening()
+                    }
+                }
+
+                override fun onError(utteranceId: String?) {}
+            })
+        }
     }
 
     override fun onDestroy() {
