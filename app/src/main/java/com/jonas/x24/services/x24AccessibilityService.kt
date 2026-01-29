@@ -2,15 +2,11 @@ package com.jonas.x24.services
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
-import android.graphics.Bitmap
 import android.graphics.Path
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import java.util.concurrent.Executors
 
 class x24AccessibilityService : AccessibilityService() {
 
@@ -193,30 +189,5 @@ class x24AccessibilityService : AccessibilityService() {
         }
         root.recycle()
         return result
-    }
-
-    fun captureScreen(callback: (Bitmap?) -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                Executors.newSingleThreadExecutor(),
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                         val bitmap = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
-                         // Copy for mutable/software access
-                         val copy = bitmap?.copy(Bitmap.Config.ARGB_8888, false)
-                         screenshot.hardwareBuffer.close()
-                         callback(copy)
-                    }
-                    override fun onFailure(errorCode: Int) {
-                        Log.e("x24Access", "Screenshot failed: $errorCode")
-                        callback(null)
-                    }
-                }
-            )
-        } else {
-            Log.e("x24Access", "Screenshot not supported on this Android version")
-            callback(null)
-        }
     }
 }

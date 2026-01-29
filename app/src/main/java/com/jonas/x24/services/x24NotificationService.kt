@@ -1,34 +1,10 @@
 package com.jonas.x24.services
 
-import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 
-data class ActiveNotification(
-    val key: String,
-    val packageName: String,
-    val title: String,
-    val text: String,
-    val timestamp: Long
-)
-
 class x24NotificationService : NotificationListenerService() {
-
-    companion object {
-        val trackedNotifications = mutableListOf<ActiveNotification>()
-
-        fun getContextString(): String {
-            synchronized(trackedNotifications) {
-                if (trackedNotifications.isEmpty()) return "No active notifications."
-                // Limit to last 5 to avoid overflowing context
-                val recent = trackedNotifications.sortedByDescending { it.timestamp }.take(5)
-                return recent.joinToString("\n") {
-                    "- [${it.packageName}]: ${it.title} says '${it.text}'"
-                }
-            }
-        }
-    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
@@ -36,39 +12,23 @@ class x24NotificationService : NotificationListenerService() {
 
         val packageName = sbn.packageName
         val extras = sbn.notification.extras
-        val title = extras.getString("android.title") ?: "Unknown"
-        val text = extras.getCharSequence("android.text")?.toString() ?: ""
+        val title = extras.getString("android.title")
+        val text = extras.getCharSequence("android.text")?.toString()
 
-        // Filter out ongoing/low priority or system notifications that might be spammy
-        if (sbn.isOngoing) return
-        if (packageName == this.packageName) return // Don't announce own notifications
+        Log.d("x24Notify", "Notification from $packageName: $title - $text")
 
-        val notification = ActiveNotification(
-            sbn.key, packageName, title, text, System.currentTimeMillis()
-        )
+        // Auto-read Important Logic
+        // In a real app, we would send this to MainActivity to speak out loud if "Auto-Read" is enabled.
+        // For now, we log.
 
-        // Update list
-        synchronized(trackedNotifications) {
-            trackedNotifications.removeAll { it.key == sbn.key }
-            trackedNotifications.add(notification)
+        // Example: If message from "Mom" -> Alert differently
+        if (title?.contains("Mom", ignoreCase = true) == true) {
+            // Trigger specific alert or TTS
+            // Ideally broadcast this event to the main app or AutomationService
         }
-
-        Log.d("x24Notify", "Notification: $title - $text")
-
-        // Announce via Broadcast
-        // OverlayService will listen for this
-        val intent = Intent("com.jonas.x24.ANNOUNCE_NOTIFICATION")
-        intent.putExtra("text", "Notification from $title. $text")
-        // Check if we should filter annoying apps? For now, announce all.
-        sendBroadcast(intent)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         super.onNotificationRemoved(sbn)
-        if (sbn == null) return
-
-        synchronized(trackedNotifications) {
-            trackedNotifications.removeAll { it.key == sbn.key }
-        }
     }
 }

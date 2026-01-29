@@ -68,14 +68,8 @@ class AutomationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!isRunning) {
-            try {
-                val notification = createNotification()
-                startForeground(1, notification)
-            } catch (e: Exception) {
-                Log.e("x24Auto", "Failed to start foreground: ${e.message}")
-                e.printStackTrace()
-                stopSelf()
-            }
+            val notification = createNotification()
+            startForeground(1, notification)
 
             // Register Receivers
             val battFilter = IntentFilter().apply {
@@ -110,41 +104,30 @@ class AutomationService : Service() {
 
     // --- Rule Engines ---
 
-    private fun announce(text: String) {
-        val intent = Intent("com.jonas.x24.ANNOUNCE_NOTIFICATION")
-        intent.putExtra("text", text)
-        sendBroadcast(intent)
-    }
-
     private fun checkBatteryRules(pct: Float) {
-        if (pct < 15 && !prefs.getBoolean("low_batt_triggered", false)) {
-            announce("Battery is critically low at ${pct.toInt()} percent.")
+        // If battery low (< 20%) -> Turn on battery saver (if feasible) or notify
+        if (pct < 20 && !prefs.getBoolean("low_batt_triggered", false)) {
+            // Logic to trigger actions
+            // For now, we simulate by adjusting brightness down
             adjustBrightness(50)
             prefs.edit().putBoolean("low_batt_triggered", true).apply()
+            Log.d("x24Auto", "Low Battery: Reducing brightness")
         } else if (pct > 20) {
             prefs.edit().putBoolean("low_batt_triggered", false).apply()
         }
     }
 
     private fun checkChargingRules(isCharging: Boolean) {
+        // If charging -> Increase brightness / Performance?
         if (isCharging) {
-             announce("Charging started.")
              adjustBrightness(200)
+             Log.d("x24Auto", "Charging: Brightness up")
         }
     }
 
     private fun checkConnectivityRules() {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val activeNetwork = cm.activeNetwork
-        val caps = cm.getNetworkCapabilities(activeNetwork)
-        val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-
-        if (isWifi && !prefs.getBoolean("wifi_connected_trigger", false)) {
-             announce("Connected to WiFi.")
-             prefs.edit().putBoolean("wifi_connected_trigger", true).apply()
-        } else if (!isWifi) {
-             prefs.edit().putBoolean("wifi_connected_trigger", false).apply()
-        }
+        // If WiFi connected -> maybe turn off Data (system handles this usually)
+        // If Headphones connected -> Open Music? (Need specific receiver for headset)
     }
 
     private fun checkTimeRules() {

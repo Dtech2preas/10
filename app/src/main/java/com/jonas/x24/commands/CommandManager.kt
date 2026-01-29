@@ -150,21 +150,6 @@ class CommandManager(private val context: Context) {
     }
 
     private fun controlMedia(action: String) {
-        // Check for Search format: SEARCH|song name
-        if (action.startsWith("SEARCH|")) {
-            val query = action.substringAfter("SEARCH|")
-            val intent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
-            intent.putExtra(MediaStore.EXTRA_MEDIA_FOCUS, MediaStore.Audio.Artists.ENTRY_CONTENT_TYPE)
-            intent.putExtra(android.app.SearchManager.QUERY, query)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            try {
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Log.e("Cmd", "Media search failed", e)
-            }
-            return
-        }
-
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val eventTime = android.os.SystemClock.uptimeMillis()
 
