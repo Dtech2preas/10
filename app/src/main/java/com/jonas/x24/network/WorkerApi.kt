@@ -5,9 +5,7 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 data class ChatRequest(
-    val messages: List<Message>,
-    val image: String? = null, // Base64 image
-    val web_search: Boolean = false
+    val messages: List<Message>
 )
 
 data class Message(

@@ -1,10 +1,9 @@
 package com.jonas.x24.services
 
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.media.MediaPlayer
 import android.os.Build
@@ -19,6 +18,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -46,25 +46,6 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
     private var isListening = false
 
-    // Conversation History
-    private val history = mutableListOf<Message>()
-
-    // Notification Receiver
-    private val notificationReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val text = intent?.getStringExtra("text")
-            if (!text.isNullOrEmpty()) {
-                Log.d("Overlay", "Announcing: $text")
-                // If currently listening, stop to speak
-                if (isListening) {
-                    speechRecognizer.stopListening()
-                    isListening = false
-                }
-                speak(text)
-            }
-        }
-    }
-
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -77,17 +58,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         setupFloatingView()
         setupSpeechRecognizer()
-
-        // Register Notification Receiver
-        val filter = IntentFilter("com.jonas.x24.ANNOUNCE_NOTIFICATION")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(notificationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(notificationReceiver, filter)
-        }
     }
 
     private fun setupFloatingView() {
+        // Build view programmatically to avoid missing XML resource
         val icon = ImageView(this)
         icon.setImageResource(R.mipmap.ic_launcher_round)
         icon.alpha = 0.8f
@@ -108,6 +82,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         params.x = 0
         params.y = 100
 
+        // Drag Logic
         floatingView.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -128,6 +103,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - initialTouchX).toInt()
                         val dy = (event.rawY - initialTouchY).toInt()
+                        // Increased threshold to 30 to allow for slight movement during click
                         if (Math.abs(dx) > 30 || Math.abs(dy) > 30) isClick = false
                         params.x = initialX + dx
                         params.y = initialY + dy
@@ -159,11 +135,12 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {
-                (floatingView as ImageView).alpha = 0.5f
+                (floatingView as ImageView).alpha = 0.5f // Processing
             }
             override fun onError(error: Int) {
                 isListening = false
                 (floatingView as ImageView).alpha = 0.8f
+                // speak("Error $error")
             }
             override fun onResults(results: Bundle?) {
                 isListening = false
@@ -179,87 +156,40 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun toggleListening() {
-        // Must run on Main Thread
-        Handler(Looper.getMainLooper()).post {
-            if (isListening) {
-                speechRecognizer.stopListening()
-                isListening = false
-            } else {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                try {
-                    speechRecognizer.startListening(intent)
-                    isListening = true
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+        if (isListening) {
+            speechRecognizer.stopListening()
+            isListening = false
+        } else {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            try {
+                speechRecognizer.startListening(intent)
+                isListening = true
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
 
     private fun processInput(userText: String) {
-        // Reset Logic
-        if (userText.contains("forget everything", ignoreCase = true) ||
-            userText.contains("reset chat", ignoreCase = true)) {
-            history.clear()
-            speak("Memory wiped, boss.")
-            return
-        }
-
-        // 1. Get Contexts
+        // 1. Get Screen Context
         val screenContext = x24AccessibilityService.instance?.getScreenContext() ?: "No screen context."
-        val notificationContext = x24NotificationService.getContextString()
 
         // 2. Format Message
-        val fullPrompt = """
-[CONTEXT]
-Screen: $screenContext
-Notifications: $notificationContext
-[/CONTEXT]
+        val prompt = "[SCREEN_CONTEXT: $screenContext]\n\nUser: $userText"
+        Log.d("Overlay", "Prompt: $prompt")
 
-$userText
-""".trim()
-
-        Log.d("Overlay", "Prompt: $fullPrompt")
-
-        // 3. Update History
-        history.add(Message("user", fullPrompt))
-
-        // Keep history manageable
-        if (history.size > 20) {
-            history.removeAt(0)
-            history.removeAt(0)
-        }
-
-        // Check if user wants to use vision immediately
-        val needsVision = userText.contains("look at this", ignoreCase = true) ||
-                          userText.contains("what is this", ignoreCase = true) ||
-                          userText.contains("see this", ignoreCase = true)
-
-        if (needsVision) {
-             handleVisionRequest()
-             return
-        }
-
-        // 4. Send to AI (Text Flow)
+        // 3. Send to AI
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Send HISTORY list
-                val response = RetrofitClient.api.chat(ChatRequest(history))
+                // We create a fresh history or use a singleton?
+                // For now, fresh single-turn prompt to avoid carrying stale context.
+                val messages = listOf(Message("user", prompt))
+                val response = RetrofitClient.api.chat(ChatRequest(messages))
+
                 val reply = response.reply
-
-                // Add Assistant Reply
-                history.add(Message("assistant", reply))
-
-                // Check for REQUEST_SCREENSHOT from AI
-                if (reply.contains("[[COMMAND:REQUEST_SCREENSHOT]]")) {
-                    speak("Taking a look...")
-                    handleVisionRequest()
-                    return@launch
-                }
-
                 val cleanReply = commandManager.executeCommand(reply)
 
                 withContext(Dispatchers.Main) {
@@ -268,71 +198,15 @@ $userText
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    speak("I'm having trouble connecting.")
+                    speak("Connection error.")
                 }
             }
         }
     }
 
-    private fun handleVisionRequest() {
-        val service = x24AccessibilityService.instance
-        if (service == null) {
-            speak("I can't see the screen right now.")
-            return
-        }
-
-        service.captureScreen { bitmap ->
-            if (bitmap == null) {
-                CoroutineScope(Dispatchers.Main).launch { speak("Failed to capture screen.") }
-                return@captureScreen
-            }
-
-            val base64 = bitmapToBase64(bitmap)
-
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    // Send request with Image
-                    val response = RetrofitClient.api.chat(ChatRequest(history, image = base64))
-                    val reply = response.reply
-
-                    history.add(Message("assistant", reply))
-                    val cleanReply = commandManager.executeCommand(reply)
-
-                    withContext(Dispatchers.Main) {
-                        speak(cleanReply)
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                     withContext(Dispatchers.Main) {
-                        speak("Error analyzing image.")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun bitmapToBase64(bitmap: android.graphics.Bitmap): String {
-        val outputStream = java.io.ByteArrayOutputStream()
-        // Resize to max 800x800 to save bandwidth
-        val maxDim = 800
-        var w = bitmap.width
-        var h = bitmap.height
-        if (w > maxDim || h > maxDim) {
-             val ratio = w.toFloat() / h.toFloat()
-             if (w > h) {
-                 w = maxDim
-                 h = (maxDim / ratio).toInt()
-             } else {
-                 h = maxDim
-                 w = (maxDim * ratio).toInt()
-             }
-        }
-        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, w, h, true)
-        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
-        return android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.NO_WRAP)
-    }
-
+    // Reuse TTS logic
     private fun speak(text: String) {
+        // Stop any current playback
         try {
             if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
             mediaPlayer?.release()
@@ -369,6 +243,7 @@ $userText
                     it.release()
                     mediaPlayer = null
                     file.delete()
+                    // Restart listening after playback
                     toggleListening()
                 }
             }
@@ -380,11 +255,13 @@ $userText
             tts.language = Locale.US
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
+
                 override fun onDone(utteranceId: String?) {
                     Handler(Looper.getMainLooper()).post {
                         toggleListening()
                     }
                 }
+
                 override fun onError(utteranceId: String?) {}
             })
         }
@@ -392,7 +269,6 @@ $userText
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(notificationReceiver)
         if (::floatingView.isInitialized) windowManager.removeView(floatingView)
         speechRecognizer.destroy()
         tts.shutdown()
