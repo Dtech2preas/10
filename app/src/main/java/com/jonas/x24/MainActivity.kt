@@ -67,7 +67,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         setupSpeechRecognizer()
 
         // Start Automation Service
-        startForegroundService(Intent(this, AutomationService::class.java))
+        try {
+            startForegroundService(Intent(this, AutomationService::class.java))
+        } catch (e: Exception) {
+            log("Failed to start Automation Service: ${e.message}")
+            e.printStackTrace()
+        }
 
         btnTalk.setOnClickListener {
             if (SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -168,40 +173,45 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun setupSpeechRecognizer() {
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                btnTalk.text = "Listening..."
-            }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {
-                btnTalk.text = "Processing..."
-            }
-            override fun onError(error: Int) {
-                if (error == SpeechRecognizer.ERROR_NO_MATCH) {
-                    val msg = "I didn't catch that, please try again."
-                    log(msg)
-                    speak(msg)
-                } else {
-                    log("Speech Error Code: $error")
+        try {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    btnTalk.text = "Listening..."
                 }
-                btnTalk.text = "TALK"
-            }
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    val text = matches[0]
-                    log("You: $text")
-                    processUserInput(text)
-                } else {
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {
+                    btnTalk.text = "Processing..."
+                }
+                override fun onError(error: Int) {
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH) {
+                        val msg = "I didn't catch that, please try again."
+                        log(msg)
+                        speak(msg)
+                    } else {
+                        log("Speech Error Code: $error")
+                    }
                     btnTalk.text = "TALK"
                 }
-            }
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
+                override fun onResults(results: Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        val text = matches[0]
+                        log("You: $text")
+                        processUserInput(text)
+                    } else {
+                        btnTalk.text = "TALK"
+                    }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+        } catch (e: Exception) {
+            log("Speech Recognizer init failed: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     private fun startListening() {
