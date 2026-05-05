@@ -13,6 +13,7 @@ import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
@@ -55,14 +56,20 @@ class CommandManager(private val context: Context) {
     private fun performAction(type: String, valueString: String): String? {
         try {
             when (type) {
-                // Hardware / System
+                                // Hardware / System
                 "FLASHLIGHT" -> toggleFlashlight(valueString == "ON")
                 "BLUETOOTH" -> toggleBluetooth(valueString == "ON")
                 "VOLUME" -> adjustVolume(valueString)
                 "BRIGHTNESS" -> adjustBrightness(valueString)
-                "WIFI" -> openWifiSettings() // TODO: Try Accessibility toggle if visible
+                "WIFI" -> toggleWifi(valueString)
+                "MOBILE_DATA" -> openMobileDataSettings()
                 "BATTERY" -> return getBatteryLevel()
                 "LOCATION" -> return getLocation()
+                "DND" -> toggleDnd(valueString == "ON")
+                "ROTATE" -> toggleAutoRotate(valueString == "ON")
+                "DATE" -> return getDate()
+                "TIME" -> return getTime()
+                "DEVICE_INFO" -> return getDeviceInfo()
 
                 // Apps / Communication
                 "OPEN_APP" -> {
@@ -70,6 +77,13 @@ class CommandManager(private val context: Context) {
                          return "I couldn't find an app named $valueString."
                      }
                 }
+                "SEARCH_APP" -> {
+                    val parts = valueString.split("|", limit = 2)
+                    if (parts.size >= 2) {
+                        searchApp(parts[0], parts[1])
+                    }
+                }
+                "OPEN_URL" -> openUrl(valueString)
                 "CALL" -> makeCall(valueString)
                 "SMS" -> {
                     val parts = valueString.split("|")
@@ -83,6 +97,8 @@ class CommandManager(private val context: Context) {
                 "ALARM" -> setAlarm(valueString)
                 "TIMER" -> setTimer(valueString)
                 "MEDIA" -> controlMedia(valueString)
+                "RECORD_AUDIO" -> recordAudio()
+                "CALENDAR" -> createCalendarEvent(valueString)
 
                 // Accessibility / Navigation
                 "HOME" -> performGlobal(AccessibilityService.GLOBAL_ACTION_HOME)
@@ -91,7 +107,9 @@ class CommandManager(private val context: Context) {
                 "LOCK" -> performGlobal(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
                 "SCREENSHOT" -> performGlobal(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
                 "SCROLL" -> scroll(valueString)
+                "SWIPE" -> swipe(valueString)
                 "CLICK" -> click(valueString)
+                "LONG_CLICK" -> longClick(valueString)
                 "CLICK_TEXT" -> clickText(valueString)
                 "INPUT_TEXT" -> inputText(valueString)
             }
@@ -104,6 +122,150 @@ class CommandManager(private val context: Context) {
     }
 
     // --- Implementation Details ---
+    // --- New Command Implementations ---
+
+    private fun openMobileDataSettings() {
+        val intent = Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    private fun toggleWifi(action: String) {
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Cannot toggle directly in Android 10+, fallback to settings
+            val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } else {
+            @Suppress("DEPRECATION")
+            when (action) {
+                "ON" -> wifiManager?.isWifiEnabled = true
+                "OFF" -> wifiManager?.isWifiEnabled = false
+                "SETTINGS" -> {
+                    val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            }
+        }
+    }
+
+    private fun toggleDnd(enable: Boolean) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (notificationManager.isNotificationPolicyAccessGranted) {
+            val filter = if (enable) android.app.NotificationManager.INTERRUPTION_FILTER_NONE else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+            notificationManager.setInterruptionFilter(filter)
+        } else {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        }
+    }
+
+    private fun toggleAutoRotate(enable: Boolean) {
+        if (!Settings.System.canWrite(context)) {
+            val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
+            intent.data = Uri.parse("package:" + context.packageName)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        }
+        Settings.System.putInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, if (enable) 1 else 0)
+    }
+
+    private fun getDate(): String {
+        return "Today is " + java.text.SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault()).format(java.util.Date())
+    }
+
+    private fun getTime(): String {
+        return "The time is " + java.text.SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date())
+    }
+
+    private fun getDeviceInfo(): String {
+        return "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, running Android ${android.os.Build.VERSION.RELEASE}"
+    }
+
+    private fun openUrl(url: String) {
+        var finalUrl = url
+        if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+            finalUrl = "https://$finalUrl"
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl))
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    private fun searchApp(appName: String, query: String) {
+        // Try launching and then input text if we can't formulate a specific intent
+        if (appName.equals("youtube", ignoreCase = true)) {
+            val intent = Intent(Intent.ACTION_SEARCH)
+            intent.setPackage("com.google.android.youtube")
+            intent.putExtra("query", query)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                // fallback
+                launchApp("youtube")
+                Thread.sleep(2000)
+                inputText(query)
+            }
+        } else if (appName.equals("web", ignoreCase = true) || appName.equals("google", ignoreCase = true)) {
+            val intent = Intent(Intent.ACTION_WEB_SEARCH)
+            intent.putExtra(android.app.SearchManager.QUERY, query)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } else {
+            launchApp(appName)
+            Thread.sleep(2000)
+            inputText(query)
+        }
+    }
+
+    private fun recordAudio() {
+        val intent = Intent(MediaStore.Audio.Media.RECORD_SOUND_ACTION)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("CommandManager", "No audio recorder app found.")
+        }
+    }
+
+    private fun createCalendarEvent(title: String) {
+        val intent = Intent(Intent.ACTION_INSERT)
+            .setData(android.provider.CalendarContract.Events.CONTENT_URI)
+            .putExtra(android.provider.CalendarContract.Events.TITLE, title)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("CommandManager", "No calendar app found.")
+        }
+    }
+
+    private fun swipe(direction: String) {
+        val service = x24AccessibilityService.instance
+        service?.swipe(direction)
+    }
+
+    private fun longClick(args: String) {
+        val service = x24AccessibilityService.instance
+        if (service == null) return
+
+        if (args.contains(",")) {
+            val parts = args.split(",")
+            if (parts.size == 2) {
+                val x = parts[0].toFloatOrNull() ?: 500f
+                val y = parts[1].toFloatOrNull() ?: 500f
+                service.longClick(x, y)
+            }
+        } else {
+            service.longClickText(args)
+        }
+    }
+
 
     private fun performGlobal(action: Int) {
         val service = x24AccessibilityService.instance
