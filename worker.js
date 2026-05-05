@@ -1,4 +1,4 @@
-
+ 
 export default {
   async fetch(request, env) {
     // 1. Handle CORS Preflight (OPTIONS)
