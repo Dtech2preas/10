@@ -1,7 +1,6 @@
 package com.jonas.x24.services
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.PixelFormat
@@ -15,6 +14,10 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.Gravity
@@ -46,6 +49,18 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
     private var isListening = false
 
+    private val notificationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.jonas.x24.NOTIFICATION_POSTED") {
+                val title = intent.getStringExtra("title")
+                val text = intent.getStringExtra("text")
+                if (!title.isNullOrEmpty() && !text.isNullOrEmpty()) {
+                    speak("New notification from $title. $text", shouldListenAfter = false)
+                }
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -58,6 +73,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         setupFloatingView()
         setupSpeechRecognizer()
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            notificationReceiver,
+            IntentFilter("com.jonas.x24.NOTIFICATION_POSTED")
+        )
     }
 
     private fun setupFloatingView() {
@@ -140,7 +160,29 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
                 (floatingView as ImageView).alpha = 0.8f
-                // speak("Error $error")
+
+                // Graceful error handling for speech recognition
+                val errorMessage = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error."
+                    SpeechRecognizer.ERROR_CLIENT -> "Client side error."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions."
+                    SpeechRecognizer.ERROR_NETWORK -> "Network error."
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout."
+                    SpeechRecognizer.ERROR_NO_MATCH -> "I didn't catch that."
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognition service is busy."
+                    SpeechRecognizer.ERROR_SERVER -> "Audio recognition server error."
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech input timeout."
+                    else -> "Unknown error occurred."
+                }
+
+                // Only speak aloud for generic no-match or timeouts to avoid spamming system errors.
+                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    speak("I didn't catch that.", shouldListenAfter = false)
+                } else if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
+                    speak("Network error.", shouldListenAfter = false)
+                } else {
+                    Log.e("OverlayService", "Speech recognizer error: $errorMessage")
+                }
             }
             override fun onResults(results: Bundle?) {
                 isListening = false
@@ -174,6 +216,31 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun processInput(userText: String) {
+        val lowerText = userText.lowercase()
+        if (lowerText == "stop" || lowerText == "cancel") {
+            // Stop TTS and media immediately
+            tts.stop()
+            try {
+                if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+            } catch (e: Exception) {}
+            // Do not restart listening
+            isListening = false
+            return
+        } else if (lowerText == "wait") {
+            // Stop TTS and media, but restart listening immediately
+            tts.stop()
+            try {
+                if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+            } catch (e: Exception) {}
+            isListening = false
+            toggleListening()
+            return
+        }
+
         // 1. Get Screen Context
         val screenContext = x24AccessibilityService.instance?.getScreenContext() ?: "No screen context."
 
@@ -193,19 +260,23 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 val cleanReply = commandManager.executeCommand(reply)
 
                 withContext(Dispatchers.Main) {
-                    speak(cleanReply)
+                    speak(cleanReply, shouldListenAfter = true)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    speak("Connection error.")
+                    speak("Connection error.", shouldListenAfter = false)
                 }
             }
         }
     }
 
+    // Default to true for standard responses, false for errors/notifications
+    private var listenAfterSpeech = false
+
     // Reuse TTS logic
-    private fun speak(text: String) {
+    private fun speak(text: String, shouldListenAfter: Boolean = true) {
+        listenAfterSpeech = shouldListenAfter
         // Stop any current playback
         try {
             if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
@@ -244,7 +315,9 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     mediaPlayer = null
                     file.delete()
                     // Restart listening after playback
-                    toggleListening()
+                    if (listenAfterSpeech && !isListening) {
+                        toggleListening()
+                    }
                 }
             }
         } catch (e: Exception) { }
@@ -258,7 +331,9 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
                 override fun onDone(utteranceId: String?) {
                     Handler(Looper.getMainLooper()).post {
-                        toggleListening()
+                        if (listenAfterSpeech && !isListening) {
+                            toggleListening()
+                        }
                     }
                 }
 
@@ -269,6 +344,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(notificationReceiver)
         if (::floatingView.isInitialized) windowManager.removeView(floatingView)
         speechRecognizer.destroy()
         tts.shutdown()
