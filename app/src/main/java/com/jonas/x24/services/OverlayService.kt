@@ -1,7 +1,6 @@
 package com.jonas.x24.services
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.PixelFormat
