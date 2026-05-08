@@ -1,8 +1,10 @@
 package com.jonas.x24.services
 
+import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class x24NotificationService : NotificationListenerService() {
 
@@ -17,14 +19,13 @@ class x24NotificationService : NotificationListenerService() {
 
         Log.d("x24Notify", "Notification from $packageName: $title - $text")
 
-        // Auto-read Important Logic
-        // In a real app, we would send this to MainActivity to speak out loud if "Auto-Read" is enabled.
-        // For now, we log.
-
-        // Example: If message from "Mom" -> Alert differently
-        if (title?.contains("Mom", ignoreCase = true) == true) {
-            // Trigger specific alert or TTS
-            // Ideally broadcast this event to the main app or AutomationService
+        // Broadcast notification to be read aloud
+        if (!title.isNullOrEmpty() && !text.isNullOrEmpty()) {
+            val intent = Intent("com.jonas.x24.NOTIFICATION_POSTED")
+            intent.putExtra("title", title)
+            intent.putExtra("text", text)
+            intent.putExtra("package", packageName)
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
         }
     }
 

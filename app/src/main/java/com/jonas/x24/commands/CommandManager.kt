@@ -112,6 +112,7 @@ class CommandManager(private val context: Context) {
                 "LONG_CLICK" -> longClick(valueString)
                 "CLICK_TEXT" -> clickText(valueString)
                 "INPUT_TEXT" -> inputText(valueString)
+                "READ_SCREEN" -> return readScreen()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -274,6 +275,23 @@ class CommandManager(private val context: Context) {
         } else {
             Log.e("CommandManager", "Accessibility Service not connected.")
         }
+    }
+
+    private fun readScreen(): String {
+        val service = x24AccessibilityService.instance ?: return "Accessibility service not running."
+        val rawContext = service.getScreenContext()
+        // Simplify for spoken text
+        var spokenContext = rawContext.replace(Regex("\\(bounds.*?\\)"), "")
+        spokenContext = spokenContext.replace("[Text]", "")
+        spokenContext = spokenContext.replace("[Button]", "Button:")
+        spokenContext = spokenContext.replace("[Input]", "Input field:")
+        spokenContext = spokenContext.replace("[Scrollable]", "")
+        spokenContext = spokenContext.trim()
+
+        if (spokenContext.isEmpty()) {
+            return "I don't see any readable text on the screen."
+        }
+        return spokenContext
     }
 
     private fun scroll(direction: String) {
