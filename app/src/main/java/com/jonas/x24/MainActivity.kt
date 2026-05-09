@@ -34,7 +34,6 @@ import com.jonas.x24.services.AutomationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
@@ -43,7 +42,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var mediaPlayer: android.media.MediaPlayer? = null
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var commandManager: CommandManager
-    private lateinit var tvLog: TextView
+    private lateinit var btnOpenLogs: Button
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
     private lateinit var etGroqToken: EditText
@@ -60,7 +59,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         sharedPreferences = getSharedPreferences("x24_prefs", MODE_PRIVATE)
 
-        tvLog = findViewById(R.id.tvLog)
+        btnOpenLogs = findViewById(R.id.btnOpenLogs)
+        btnOpenLogs.setOnClickListener {
+            startActivity(Intent(this, LogActivity::class.java))
+        }
         btnTalk = findViewById(R.id.btnTalk)
         btnChangeVoice = findViewById(R.id.btnChangeVoice)
         btnOverlay = findViewById(R.id.btnOverlay)
@@ -495,10 +497,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun log(text: String) {
-        tvLog.append("\n$text")
-        // Scroll to bottom
-        val scroll = tvLog.parent as? android.widget.ScrollView
-        scroll?.post { scroll.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+        LogManager.log(text)
     }
 
     override fun onInit(status: Int) {
