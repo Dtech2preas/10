@@ -262,10 +262,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
-                val groqToken = prefs.getString("groq_token", "") ?: ""
+                com.jonas.x24.TokenManager.init(this@OverlayService)
                 val systemPrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
 
-                if (groqToken.isEmpty()) {
+                if (com.jonas.x24.TokenManager.getTokens().isEmpty()) {
                     withContext(Dispatchers.Main) {
                         speak("Please set your Groq API token in the main app.", shouldListenAfter = false)
                     }
@@ -276,7 +276,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 messages.addAll(ChatHistoryManager.getHistory())
 
                 val request = GroqRequest(messages = messages)
-                val responseBody = RetrofitClient.groqApi.chatCompletionsStream("Bearer $groqToken", request)
+                val responseBody = com.jonas.x24.TokenManager.chatCompletionsStream(request)
                 val reader = BufferedReader(InputStreamReader(responseBody.byteStream()))
                 var fullReply = StringBuilder()
                 var currentSentence = java.lang.StringBuilder()
@@ -325,6 +325,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 commandManager.executeCommand(fullReply.toString())
 
 
+            } catch (e: com.jonas.x24.network.AllTokensFailedException) {
+                withContext(Dispatchers.Main) {
+                    Log.e("OverlayService", "All tokens failed: 429 Cooling off")
+                    speak("Cooling off", shouldListenAfter = false)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 Log.e("OverlayService", "Network Error: ${e.message}", e)
