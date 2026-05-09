@@ -7,6 +7,10 @@ import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class x24NotificationService : NotificationListenerService() {
+    companion object {
+        val recentNotifications = java.util.concurrent.CopyOnWriteArrayList<String>()
+    }
+
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
@@ -18,6 +22,18 @@ class x24NotificationService : NotificationListenerService() {
         val text = extras.getCharSequence("android.text")?.toString()
 
         Log.d("x24Notify", "Notification from $packageName: $title - $text")
+
+        // Store recent notification (keep last 10)
+        if (!title.isNullOrEmpty() && !text.isNullOrEmpty()) {
+            val formatted = "$title: $text"
+            if (!recentNotifications.contains(formatted)) {
+                recentNotifications.add(0, formatted)
+                if (recentNotifications.size > 10) {
+                    recentNotifications.removeAt(recentNotifications.size - 1)
+                }
+            }
+        }
+
 
         // Broadcast notification to be read aloud
         if (!title.isNullOrEmpty() && !text.isNullOrEmpty()) {

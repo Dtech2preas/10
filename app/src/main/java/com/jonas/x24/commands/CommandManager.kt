@@ -22,6 +22,7 @@ import android.util.Log
 import android.view.KeyEvent
 import androidx.core.app.ActivityCompat
 import com.jonas.x24.services.x24AccessibilityService
+import com.jonas.x24.services.x24NotificationService
 import java.util.Locale
 import java.util.regex.Pattern
 import kotlin.math.abs
@@ -30,7 +31,7 @@ class CommandManager(private val context: Context) {
 
     fun executeCommand(rawText: String): String {
         // Regex to find [[COMMAND:TYPE|VALUE]] or [[COMMAND:TYPE|VAL1|VAL2]]
-        val pattern = Pattern.compile("\\[\\[COMMAND:(.*?)\\|(.*?)\\]\\]")
+        val pattern = Pattern.compile("\\[\\[COMMAND:([^|\\]]+)(?:\\|([^\\]]+))?\\]\\]")
         val matcher = pattern.matcher(rawText)
 
         var cleanText = rawText
@@ -39,7 +40,7 @@ class CommandManager(private val context: Context) {
         while (matcher.find()) {
             val fullTag = matcher.group(0)
             val type = matcher.group(1)
-            val valueString = matcher.group(2)
+            val valueString = matcher.group(2) ?: ""
 
             // Remove the tag from the spoken text
             cleanText = cleanText.replace(fullTag, "")
@@ -113,6 +114,9 @@ class CommandManager(private val context: Context) {
                 "CLICK_TEXT" -> clickText(valueString)
                 "INPUT_TEXT" -> inputText(valueString)
                 "READ_SCREEN" -> return readScreen()
+                "READ_NOTIFICATIONS" -> return readNotifications()
+                "WAIT" -> Thread.sleep((valueString.toLongOrNull() ?: 2) * 1000)
+                "PRESS_ENTER" -> pressEnter()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -522,4 +526,27 @@ class CommandManager(private val context: Context) {
 
         return "I couldn't determine your location."
     }
+
+
+    private fun pressEnter() {
+        val service = x24AccessibilityService.instance
+        if (service != null) {
+            // Usually, searching or submitting can be triggered via Editor Action or Key Event
+            // We simulate a DPAD center or Enter key if possible, or perform an action on the focused node
+            service.pressEnterOrSubmit()
+        }
+    }
+
+    private fun readNotifications(): String {
+        val notifs = x24NotificationService.recentNotifications
+        if (notifs.isEmpty()) {
+            return "You have no new notifications."
+        }
+        val sb = java.lang.StringBuilder("Here are your recent notifications: ")
+        for ((index, notif) in notifs.withIndex()) {
+            sb.append("${index + 1}: $notif. ")
+        }
+        return sb.toString()
+    }
+
 }
