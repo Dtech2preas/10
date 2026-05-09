@@ -20,6 +20,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.content.BroadcastReceiver
 import com.jonas.x24.ChatHistoryManager
+import com.jonas.x24.LogManager
 import com.jonas.x24.network.GroqRequest
 import com.jonas.x24.network.GroqMessage
 import android.content.IntentFilter
@@ -51,6 +52,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private lateinit var commandManager: CommandManager
     private var mediaPlayer: MediaPlayer? = null
     private var isListening = false
+    private var lastInteractionTime = 0L
 
     private val notificationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -180,11 +182,30 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
                 // Only speak aloud for generic no-match or timeouts to avoid spamming system errors.
                 if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                    speak("I didn't catch that.", shouldListenAfter = false)
+                    val timeSinceLast = System.currentTimeMillis() - lastInteractionTime
+                    if (timeSinceLast < 60000) {
+                        // Restart listening silently to keep the 1-minute window active
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            // Start listening directly without updating lastInteractionTime
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                            try {
+                                speechRecognizer.startListening(intent)
+                                isListening = true
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }, 100)
+                    } else {
+                        speak("I didn't catch that.", shouldListenAfter = false)
+                    }
                 } else if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
                     speak("Network error.", shouldListenAfter = false)
                 } else {
                     Log.e("OverlayService", "Speech recognizer error: $errorMessage")
+                    LogManager.log("Speech Error: $errorMessage")
                 }
             }
             override fun onResults(results: Bundle?) {
@@ -212,6 +233,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             try {
                 speechRecognizer.startListening(intent)
                 isListening = true
+                lastInteractionTime = System.currentTimeMillis()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -220,6 +242,24 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private fun processInput(userText: String) {
         val lowerText = userText.lowercase()
+
+        // If TTS is currently playing, we ONLY accept explicit interrupts to prevent feedback loops
+        if (tts.isSpeaking) {
+            if (lowerText.contains("wait") || lowerText.contains("stop") || lowerText.contains("cancel")) {
+                tts.stop()
+                try {
+                    if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+                    mediaPlayer?.release()
+                    mediaPlayer = null
+                } catch (e: Exception) {}
+                isListening = false
+                lastInteractionTime = System.currentTimeMillis()
+                toggleListening()
+            }
+            // Ignore anything else heard while speaking
+            return
+        }
+
         if (lowerText == "stop" || lowerText == "cancel") {
             // Stop TTS and media immediately
             tts.stop()
@@ -240,6 +280,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 mediaPlayer = null
             } catch (e: Exception) {}
             isListening = false
+            lastInteractionTime = System.currentTimeMillis()
             toggleListening()
             return
         } else if (lowerText == "clear memory") {
@@ -254,6 +295,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         // 2. Format Message
         val prompt = "[SCREEN_CONTEXT: $screenContext]\n\nUser: $userText"
         Log.d("Overlay", "Prompt: $prompt")
+        LogManager.log("User (Overlay): $userText")
 
         // Add user message to history
         ChatHistoryManager.addMessage("user", prompt)
@@ -317,22 +359,39 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                      withContext(Dispatchers.Main) {
                           speak(finalSentence, shouldListenAfter = true) // Final listen
                      }
+                } else {
+                     withContext(Dispatchers.Main) {
+                          // No text to speak, but we should start listening
+                          if (listenAfterSpeech && !isListening) {
+                              toggleListening()
+                          }
+                     }
                 }
 
                 ChatHistoryManager.addMessage("assistant", fullReply.toString())
+                LogManager.log("x24 (Overlay): ${fullReply.toString()}")
+
 
                 // Execute commands AFTER full generation to ensure context
-                commandManager.executeCommand(fullReply.toString())
+                val commandOutput = commandManager.executeCommand(fullReply.toString())
+                if (commandOutput.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        speak(commandOutput, shouldListenAfter = true)
+                    }
+                }
+
 
 
             } catch (e: com.jonas.x24.network.AllTokensFailedException) {
                 withContext(Dispatchers.Main) {
                     Log.e("OverlayService", "All tokens failed: 429 Cooling off")
+                    LogManager.log("All tokens failed: 429 Cooling off")
                     speak("Cooling off", shouldListenAfter = false)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 Log.e("OverlayService", "Network Error: ${e.message}", e)
+                LogManager.log("Network Error: ${e.message}")
                 withContext(Dispatchers.Main) {
                     speak("Connection error: ${e.message}", shouldListenAfter = false)
                 }
@@ -357,6 +416,13 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         // Speak using local TTS
         tts.speak(text, TextToSpeech.QUEUE_ADD, null, "TTS_ID")
+
+        // Try to start listening immediately so user can interrupt with "wait"
+        if (!isListening) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                toggleListening()
+            }, 500)
+        }
     }
 
     private fun playAudio(file: java.io.File) {
@@ -385,11 +451,16 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 override fun onStart(utteranceId: String?) {}
 
                 override fun onDone(utteranceId: String?) {
+
                     Handler(Looper.getMainLooper()).post {
                         if (listenAfterSpeech && !isListening) {
-                            toggleListening()
+                            val timeSinceLast = System.currentTimeMillis() - lastInteractionTime
+                            if (timeSinceLast < 60000) { // 60 seconds
+                                toggleListening()
+                            }
                         }
                     }
+
                 }
 
                 override fun onError(utteranceId: String?) {}

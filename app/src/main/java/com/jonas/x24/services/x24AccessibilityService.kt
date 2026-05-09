@@ -286,6 +286,36 @@ class x24AccessibilityService : AccessibilityService() {
         return false
     }
 
+
+    fun pressEnterOrSubmit() {
+        val root = rootInActiveWindow ?: return
+        val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+
+        if (focus != null) {
+            // Some keyboards/apps respond to ACTION_CLICK or specific editor actions when focused
+            focus.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            focus.recycle()
+        }
+
+        // Also try to find a submit/search button and click it as a fallback
+        val nodes = root.findAccessibilityNodeInfosByText("Search")
+        if (nodes != null) {
+             for (node in nodes) {
+                 if (node.isClickable) {
+                      node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                      break
+                 }
+                 node.recycle()
+             }
+        }
+
+        // Hardware keyboard enter simulation is not fully supported via GestureDescription.
+        // If the above FOCUS_INPUT and text matching fail, we gracefully do nothing
+        // to avoid unintended touches.
+
+        root.recycle()
+    }
+
     fun inputText(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
         val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
