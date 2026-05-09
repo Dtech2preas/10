@@ -23,4 +23,13 @@ object RetrofitClient {
             .build()
             .create(WorkerApi::class.java)
     }
+
+    val groqApi: GroqApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://api.groq.com/openai/v1/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(GroqApi::class.java)
+    }
 }

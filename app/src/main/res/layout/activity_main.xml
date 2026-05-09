@@ -39,13 +39,67 @@
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginStart="16dp"/>
 
+    <EditText
+        android:id="@+id/etGroqToken"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Groq API Token"
+        android:inputType="textPassword"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#AAAAAA"
+        android:layout_marginTop="16dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        app:layout_constraintTop_toBottomOf="@id/tvStatus"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <EditText
+        android:id="@+id/etBrainUrl"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Brain URL (e.g., https://www.preasx24.co.za/brain.txt)"
+        android:inputType="textUri"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#AAAAAA"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        app:layout_constraintTop_toBottomOf="@id/etGroqToken"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/llButtons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/etBrainUrl">
+
+        <Button
+            android:id="@+id/btnSaveSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
+            android:id="@+id/btnRefetchBrain"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Refetch Brain"
+            android:layout_marginEnd="8dp"/>
+    </LinearLayout>
+
     <ScrollView
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_margin="16dp"
         android:background="#111111"
         android:padding="8dp"
-        app:layout_constraintTop_toBottomOf="@id/tvStatus"
+        app:layout_constraintTop_toBottomOf="@id/llButtons"
         app:layout_constraintBottom_toTopOf="@id/btnTalk"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -57,7 +111,8 @@
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:fontFamily="monospace"
-            android:text="> System initialized...\n" />
+            android:text="> System initialized...
+" />
     </ScrollView>
 
     <Button

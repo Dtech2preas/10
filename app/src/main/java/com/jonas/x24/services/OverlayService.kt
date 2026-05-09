@@ -1,7 +1,11 @@
 package com.jonas.x24.services
 
+import android.content.Context
 import android.app.Service
 import android.content.Intent
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.media.MediaPlayer
@@ -15,7 +19,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.content.BroadcastReceiver
-import android.content.Context
+import com.jonas.x24.ChatHistoryManager
+import com.jonas.x24.network.GroqRequest
+import com.jonas.x24.network.GroqMessage
 import android.content.IntentFilter
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import android.speech.tts.UtteranceProgressListener
@@ -239,6 +245,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             isListening = false
             toggleListening()
             return
+        } else if (lowerText == "clear memory") {
+            ChatHistoryManager.clear()
+            speak("Memory cleared.", shouldListenAfter = false)
+            return
         }
 
         // 1. Get Screen Context
@@ -248,20 +258,76 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         val prompt = "[SCREEN_CONTEXT: $screenContext]\n\nUser: $userText"
         Log.d("Overlay", "Prompt: $prompt")
 
+        // Add user message to history
+        ChatHistoryManager.addMessage("user", prompt)
+
         // 3. Send to AI
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // We create a fresh history or use a singleton?
-                // For now, fresh single-turn prompt to avoid carrying stale context.
-                val messages = listOf(Message("user", prompt))
-                val response = RetrofitClient.api.chat(ChatRequest(messages))
+                val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+                val groqToken = prefs.getString("groq_token", "") ?: ""
+                val systemPrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
 
-                val reply = response.reply
-                val cleanReply = commandManager.executeCommand(reply)
-
-                withContext(Dispatchers.Main) {
-                    speak(cleanReply, shouldListenAfter = true)
+                if (groqToken.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        speak("Please set your Groq API token in the main app.", shouldListenAfter = false)
+                    }
+                    return@launch
                 }
+
+                val messages = mutableListOf(GroqMessage("system", systemPrompt))
+                messages.addAll(ChatHistoryManager.getHistory())
+
+                val request = GroqRequest(messages = messages)
+                val responseBody = RetrofitClient.groqApi.chatCompletionsStream("Bearer $groqToken", request)
+                val reader = BufferedReader(InputStreamReader(responseBody.byteStream()))
+                var fullReply = StringBuilder()
+                var currentSentence = java.lang.StringBuilder()
+
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    if (line!!.startsWith("data: ")) {
+                        val data = line!!.substring(6)
+                        if (data == "[DONE]") break
+                        try {
+                            val json = JSONObject(data)
+                            val delta = json.getJSONArray("choices").getJSONObject(0).getJSONObject("delta")
+                            if (delta.has("content")) {
+                                val content = delta.getString("content")
+                                fullReply.append(content)
+                                currentSentence.append(content)
+
+                                // Simple sentence splitting for TTS
+                                if (content.contains(".") || content.contains("?") || content.contains("!") || content.contains("\n")) {
+                                    val sentenceToSpeak = currentSentence.toString().trim()
+                                    if (sentenceToSpeak.isNotEmpty() && !sentenceToSpeak.startsWith("[[")) { // Don't speak commands
+                                         withContext(Dispatchers.Main) {
+                                              speak(sentenceToSpeak, shouldListenAfter = false) // Stream speaking
+                                         }
+                                    }
+                                    currentSentence.clear()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+
+                // Flush remaining text
+                val finalSentence = currentSentence.toString().trim()
+                if (finalSentence.isNotEmpty() && !finalSentence.startsWith("[[")) {
+                     withContext(Dispatchers.Main) {
+                          speak(finalSentence, shouldListenAfter = true) // Final listen
+                     }
+                }
+
+                ChatHistoryManager.addMessage("assistant", fullReply.toString())
+
+                // Execute commands AFTER full generation to ensure context
+                commandManager.executeCommand(fullReply.toString())
+
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
@@ -286,22 +352,8 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         tts.stop()
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val responseBody = RetrofitClient.api.tts(TtsRequest(text))
-                val bytes = responseBody.bytes()
-                val tempFile = java.io.File.createTempFile("tts_overlay", ".mp3", cacheDir)
-                java.io.FileOutputStream(tempFile).use { it.write(bytes) }
-
-                withContext(Dispatchers.Main) {
-                    playAudio(tempFile)
-                }
-            } catch (e: Exception) {
-                 withContext(Dispatchers.Main) {
-                     tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "TTS_ID")
-                 }
-            }
-        }
+        // Speak using local TTS
+        tts.speak(text, TextToSpeech.QUEUE_ADD, null, "TTS_ID")
     }
 
     private fun playAudio(file: java.io.File) {
