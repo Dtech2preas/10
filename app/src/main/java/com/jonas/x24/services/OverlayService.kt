@@ -45,6 +45,10 @@ import java.util.Locale
 
 class OverlayService : Service(), TextToSpeech.OnInitListener {
 
+    companion object {
+        var instance: OverlayService? = null
+    }
+
     private lateinit var windowManager: WindowManager
     private lateinit var floatingView: View
     private lateinit var speechRecognizer: SpeechRecognizer
@@ -72,6 +76,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         commandManager = CommandManager(this)
         tts = TextToSpeech(this, this)
@@ -83,6 +88,13 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             notificationReceiver,
             IntentFilter("com.jonas.x24.NOTIFICATION_POSTED")
         )
+    }
+
+    // Public method for AutomationService to trigger a proactive conversation
+    fun triggerProactiveConversation(internalPrompt: String) {
+        // Strip out command tags from internal trigger if needed, though mostly it's system-led
+        LogManager.log("Proactive Trigger: $internalPrompt")
+        processInput(internalPrompt)
     }
 
     private fun setupFloatingView() {
@@ -137,7 +149,26 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     }
                     MotionEvent.ACTION_UP -> {
                         if (isClick) {
-                            toggleListening()
+                            if (tts.isSpeaking) {
+                                // Stop TTS and media if user taps while speaking
+                                tts.stop()
+                                try {
+                                    if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+                                    mediaPlayer?.release()
+                                    mediaPlayer = null
+                                } catch (e: Exception) {}
+
+                                // Explicitly start listening immediately
+                                if (isListening) {
+                                    speechRecognizer.cancel()
+                                    isListening = false
+                                }
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    toggleListening()
+                                }, 100)
+                            } else {
+                                toggleListening()
+                            }
                         }
                         return true
                     }
@@ -180,34 +211,17 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     else -> "Unknown error occurred."
                 }
 
-                // Only speak aloud for generic no-match or timeouts to avoid spamming system errors.
+                // Only log silent restarts or speak if needed
                 if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                    val timeSinceLast = System.currentTimeMillis() - lastInteractionTime
-                    if (timeSinceLast < 60000) {
-                        // Restart listening silently to keep the 1-minute window active
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            if (!isListening) {
-                                // Start listening directly without updating lastInteractionTime
-                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                                try {
-                                    speechRecognizer.startListening(intent)
-                                    isListening = true
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            }
-                        }, 100)
-                    } else {
-                        speak("I didn't catch that.", shouldListenAfter = false)
-                    }
+                    // Stop aggressive silent restart to fix "Client side error"
+                    // Let the user tap to wake or let AutomationService trigger it
                 } else if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
                     speak("Network error.", shouldListenAfter = false)
                 } else if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                     speechRecognizer.cancel()
                     isListening = false
+                } else if (error == SpeechRecognizer.ERROR_CLIENT) {
+                    // Ignore client side errors caused by rapid start/cancel
                 } else {
                     Log.e("OverlayService", "Speech recognizer error: $errorMessage")
                     LogManager.log("Speech Error: $errorMessage")
@@ -313,7 +327,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             try {
                 val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
                 com.jonas.x24.TokenManager.init(this@OverlayService)
-                val systemPrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+
+                // Inject agentic loop instructions into the system prompt
+                val basePrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+                val agenticInjection = "\n\n[CRITICAL SYSTEM DIRECTIVE]: You now operate in a SILENT AGENTIC LOOP. When executing multi-step tasks, DO NOT output multiple commands at once (e.g. OPEN_APP followed immediately by WAIT and CLICK_TEXT). Instead, output ONE command, and the system will silently execute it and feed the result back to you. You must then evaluate the new [SCREEN_CONTEXT] and output the NEXT command. Continue this loop silently until the task is fully complete. ONLY speak naturally to the user when you have finished the task or need their input. NEVER speak raw screen data or your step-by-step internal thoughts aloud."
+                val systemPrompt = basePrompt + agenticInjection
 
                 if (com.jonas.x24.TokenManager.getTokens().isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -357,9 +375,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                                 // Simple sentence splitting for TTS
                                 if (content.contains(".") || content.contains("?") || content.contains("!") || content.contains("\n")) {
                                     val sentenceToSpeak = currentSentence.toString().trim()
-                                    if (sentenceToSpeak.isNotEmpty() && !sentenceToSpeak.startsWith("[[")) { // Don't speak commands
+                                    // Strip out command tags before speaking
+                                    val cleanSentence = sentenceToSpeak.replace(Regex("\\[\\[COMMAND:.*?\\]\\]"), "").trim()
+                                    if (cleanSentence.isNotEmpty()) {
                                          withContext(Dispatchers.Main) {
-                                              speak(sentenceToSpeak, shouldListenAfter = false) // Stream speaking
+                                              speak(cleanSentence, shouldListenAfter = false) // Stream speaking
                                          }
                                     }
                                     currentSentence.clear()
@@ -373,29 +393,34 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
                 // Flush remaining text
                 val finalSentence = currentSentence.toString().trim()
-                if (finalSentence.isNotEmpty() && !finalSentence.startsWith("[[")) {
+                val cleanFinalSentence = finalSentence.replace(Regex("\\[\\[COMMAND:.*?\\]\\]"), "").trim()
+                if (cleanFinalSentence.isNotEmpty()) {
                      withContext(Dispatchers.Main) {
-                          speak(finalSentence, shouldListenAfter = true) // Final listen
-                     }
-                } else {
-                     withContext(Dispatchers.Main) {
-                          // No text to speak, but we should start listening
-                          if (listenAfterSpeech && !isListening) {
-                              toggleListening()
-                          }
+                          speak(cleanFinalSentence, shouldListenAfter = true) // Final listen
                      }
                 }
 
                 ChatHistoryManager.addMessage("assistant", fullReply.toString())
                 LogManager.log("x24 (Overlay): ${fullReply.toString()}")
 
-
-                // Execute commands AFTER full generation to ensure context
+                // Execute commands AFTER full generation
                 val commandOutput = commandManager.executeCommand(fullReply.toString())
                 if (commandOutput.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        speak(commandOutput, shouldListenAfter = true)
-                    }
+                    // Agentic loop: feed the output silently back to the AI to decide the next step
+                    val internalPrompt = "[INTERNAL SYSTEM UPDATE] Command execution result:\n$commandOutput\n\nIf you have completed the user's request, provide a final spoken summary. If you need to take further action to complete the goal, output the next [[COMMAND:...]] silently without speaking."
+
+                    // Don't log this huge dump to the UI
+                    Log.d("OverlayService", "Executing agentic feedback loop.")
+
+                    // Recurse by essentially faking a user prompt with the internal update
+                    processInput(internalPrompt)
+                } else {
+                     withContext(Dispatchers.Main) {
+                          // No commands outputted, ensure we start listening if needed
+                          if (listenAfterSpeech && !isListening && !tts.isSpeaking) {
+                              toggleListening()
+                          }
+                     }
                 }
 
 
@@ -441,12 +466,8 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             isListening = false
         }
 
-        // Try to start listening immediately so user can interrupt with "wait"
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (!isListening) {
-                toggleListening()
-            }
-        }, 500)
+        // Removed aggressive listening while speaking to prevent ERROR_CLIENT
+        // Listening will be triggered by onDone in UtteranceProgressListener if shouldListenAfter is true
     }
 
     private fun playAudio(file: java.io.File) {
@@ -475,16 +496,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 override fun onStart(utteranceId: String?) {}
 
                 override fun onDone(utteranceId: String?) {
-
                     Handler(Looper.getMainLooper()).post {
                         if (listenAfterSpeech && !isListening) {
-                            val timeSinceLast = System.currentTimeMillis() - lastInteractionTime
-                            if (timeSinceLast < 60000) { // 60 seconds
-                                toggleListening()
-                            }
+                            toggleListening() // Start listening naturally after speaking finishes
                         }
                     }
-
                 }
 
                 override fun onError(utteranceId: String?) {}
@@ -494,6 +510,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         LocalBroadcastManager.getInstance(this).unregisterReceiver(notificationReceiver)
         if (::floatingView.isInitialized) windowManager.removeView(floatingView)
         speechRecognizer.destroy()
