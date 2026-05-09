@@ -199,8 +199,11 @@ class x24AccessibilityService : AccessibilityService() {
         val isEditable = node.isEditable
         val isScrollable = node.isScrollable
 
-        if (!text.isNullOrEmpty() || !desc.isNullOrEmpty() || isScrollable) {
-            val label = text ?: desc ?: "Scrollable Area"
+        if (!text.isNullOrEmpty() || !desc.isNullOrEmpty() || isScrollable || isEditable) {
+            var label = text ?: desc ?: "Empty"
+            if (isScrollable && label == "Empty") label = "Scrollable Area"
+            if (isEditable && label == "Empty") label = "Input Field"
+
             val type = when {
                 isEditable -> "Input"
                 isClickable -> "Button"
@@ -211,9 +214,15 @@ class x24AccessibilityService : AccessibilityService() {
             val bounds = android.graphics.Rect()
             node.getBoundsInScreen(bounds)
 
+            // Include view ID resource name for better element identification (like 'search_button')
+            val viewId = node.viewIdResourceName?.let { id ->
+                val simpleId = id.substringAfterLast("/")
+                " id: $simpleId"
+            } ?: ""
+
             // Limit length to avoid blowing up context
-            if (label.length < 50) {
-                 builder.append("[$type] $label (bounds: ${bounds.left},${bounds.top},${bounds.right},${bounds.bottom})\n")
+            if (label.length < 100) { // Increased length slightly to capture more context
+                 builder.append("[$type] $label (bounds: ${bounds.left},${bounds.top},${bounds.right},${bounds.bottom})$viewId\n")
             }
         }
 
@@ -297,16 +306,34 @@ class x24AccessibilityService : AccessibilityService() {
             focus.recycle()
         }
 
-        // Also try to find a submit/search button and click it as a fallback
-        val nodes = root.findAccessibilityNodeInfosByText("Search")
-        if (nodes != null) {
-             for (node in nodes) {
-                 if (node.isClickable) {
-                      node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                      break
+        // Also try to find a submit/search/send button and click it as a fallback
+        val possibleLabels = listOf("Search", "Send", "Submit", "Done", "Go", "Enter")
+        var clicked = false
+
+        for (label in possibleLabels) {
+            if (clicked) break
+            val nodes = root.findAccessibilityNodeInfosByText(label)
+            if (nodes != null) {
+                 for (node in nodes) {
+                     if (!clicked && performClick(node)) {
+                          clicked = true
+                     }
+                     node.recycle()
                  }
-                 node.recycle()
-             }
+            }
+        }
+
+        // Try content descriptions if text wasn't found
+        if (!clicked) {
+            val sendNodes = mutableListOf<AccessibilityNodeInfo>()
+            findNodesByContentDescription(root, "Send", sendNodes)
+            findNodesByContentDescription(root, "Search", sendNodes)
+            for (node in sendNodes) {
+                if (!clicked && performClick(node)) {
+                    clicked = true
+                }
+                node.recycle()
+            }
         }
 
         // Hardware keyboard enter simulation is not fully supported via GestureDescription.
@@ -316,9 +343,20 @@ class x24AccessibilityService : AccessibilityService() {
         root.recycle()
     }
 
+    private fun findNodesByContentDescription(node: AccessibilityNodeInfo?, targetDesc: String, list: MutableList<AccessibilityNodeInfo>) {
+        if (node == null) return
+        val desc = node.contentDescription?.toString()
+        if (desc != null && desc.contains(targetDesc, ignoreCase = true)) {
+            list.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            findNodesByContentDescription(node.getChild(i), targetDesc, list)
+        }
+    }
+
     fun inputText(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        var focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
         var result = false
         if (focus != null) {
@@ -328,8 +366,36 @@ class x24AccessibilityService : AccessibilityService() {
                 result = focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
             }
             focus.recycle()
+        } else {
+            // Fallback: Find the first editable node on the screen
+            val editableNodes = mutableListOf<AccessibilityNodeInfo>()
+            findEditableNodes(root, editableNodes)
+            if (editableNodes.isNotEmpty()) {
+                val node = editableNodes[0]
+                val arguments = Bundle()
+                arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                result = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                for (n in editableNodes) n.recycle()
+            }
         }
         root.recycle()
         return result
+    }
+
+    private fun findEditableNodes(node: AccessibilityNodeInfo?, list: MutableList<AccessibilityNodeInfo>) {
+        if (node == null) return
+        if (node.isEditable) {
+            list.add(node)
+            // Don't recycle here, we need it in the list
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i)
+            findEditableNodes(child, list)
+            // Child might be added to list, so we can't blindly recycle unless we manage it carefully.
+            // For simplicity and safety against memory leaks, we let the caller recycle the list.
+            if (child != null && !child.isEditable) {
+                child.recycle()
+            }
+        }
     }
 }
