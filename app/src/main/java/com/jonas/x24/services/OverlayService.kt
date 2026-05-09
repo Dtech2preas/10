@@ -35,10 +35,12 @@ import android.widget.ImageView
 import android.widget.Toast
 import com.jonas.x24.R
 import com.jonas.x24.commands.CommandManager
+import com.jonas.x24.TokenManager
 import com.jonas.x24.network.RetrofitClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -260,76 +262,115 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         // 3. Send to AI
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
-                val groqToken = prefs.getString("groq_token", "") ?: ""
-                val systemPrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+            val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+            val tokens = TokenManager.getTokens(prefs)
 
-                if (groqToken.isEmpty()) {
+            if (tokens.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    speak("Please set your Groq API token in the main app.", shouldListenAfter = false)
+                    Log.d("Overlay", "Done handling request.")
+                }
+                return@launch
+            }
+
+            val systemPrompt = prefs.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+            val messages = mutableListOf(GroqMessage("system", systemPrompt))
+            messages.addAll(ChatHistoryManager.getHistory())
+
+            val request = GroqRequest(messages = messages)
+
+            var consecutiveFailures = 0
+            val maxFailures = tokens.size
+            var success = false
+
+            while (consecutiveFailures < maxFailures && !success) {
+                val currentToken = TokenManager.getNextToken(prefs) ?: break
+                try {
+                    val responseBody = RetrofitClient.groqApi.chatCompletionsStream("Bearer $currentToken", request)
+                    success = true
+
+                    val reader = BufferedReader(InputStreamReader(responseBody.byteStream()))
+                    var fullReply = StringBuilder()
+                    var currentSentence = java.lang.StringBuilder()
+
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        if (line!!.startsWith("data: ")) {
+                            val data = line!!.substring(6)
+                            if (data == "[DONE]") break
+                            try {
+                                val json = JSONObject(data)
+                                val delta = json.getJSONArray("choices").getJSONObject(0).getJSONObject("delta")
+                                if (delta.has("content")) {
+                                    val content = delta.getString("content")
+                                    fullReply.append(content)
+                                    currentSentence.append(content)
+
+                                    // Simple sentence splitting for TTS
+                                    if (content.contains(".") || content.contains("?") || content.contains("!") || content.contains("\n")) {
+                                        val sentenceToSpeak = currentSentence.toString().trim()
+                                        if (sentenceToSpeak.isNotEmpty() && !sentenceToSpeak.startsWith("[[")) { // Don't speak commands
+                                             withContext(Dispatchers.Main) {
+                                                  speak(sentenceToSpeak, shouldListenAfter = false) // Stream speaking
+                                             }
+                                        }
+                                        currentSentence.clear()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                    val remainingText = currentSentence.toString().trim()
+                    if (remainingText.isNotEmpty() && !remainingText.startsWith("[[")) {
+                        withContext(Dispatchers.Main) {
+                             speak(remainingText, shouldListenAfter = false)
+                        }
+                    }
+
+                    // Execute commands AFTER receiving the full reply
+                    val finalSpoken = commandManager.executeCommand(fullReply.toString())
+                    ChatHistoryManager.addMessage("assistant", finalSpoken)
+
                     withContext(Dispatchers.Main) {
-                        speak("Please set your Groq API token in the main app.", shouldListenAfter = false)
+                         // Wait for TTS to finish before returning to gray/listening
+                         while (tts.isSpeaking) {
+                              delay(100)
+                         }
+
+                         Log.d("Overlay", "Done handling request.")
+
+                         /* Continuous listening handling removed or managed elsewhere */
+                    }
+                } catch (e: retrofit2.HttpException) {
+                    if (e.code() == 429) {
+                        consecutiveFailures++
+                        Log.e("Overlay", "Token failed with 429. Trying next...")
+                    } else {
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            speak("Network Error.", shouldListenAfter = false)
+                            Log.d("Overlay", "Done handling request.")
+                        }
+                        return@launch
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        speak("Network Error.", shouldListenAfter = false)
+                        Log.d("Overlay", "Done handling request.")
                     }
                     return@launch
                 }
+            }
 
-                val messages = mutableListOf(GroqMessage("system", systemPrompt))
-                messages.addAll(ChatHistoryManager.getHistory())
-
-                val request = GroqRequest(messages = messages)
-                val responseBody = RetrofitClient.groqApi.chatCompletionsStream("Bearer $groqToken", request)
-                val reader = BufferedReader(InputStreamReader(responseBody.byteStream()))
-                var fullReply = StringBuilder()
-                var currentSentence = java.lang.StringBuilder()
-
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    if (line!!.startsWith("data: ")) {
-                        val data = line!!.substring(6)
-                        if (data == "[DONE]") break
-                        try {
-                            val json = JSONObject(data)
-                            val delta = json.getJSONArray("choices").getJSONObject(0).getJSONObject("delta")
-                            if (delta.has("content")) {
-                                val content = delta.getString("content")
-                                fullReply.append(content)
-                                currentSentence.append(content)
-
-                                // Simple sentence splitting for TTS
-                                if (content.contains(".") || content.contains("?") || content.contains("!") || content.contains("\n")) {
-                                    val sentenceToSpeak = currentSentence.toString().trim()
-                                    if (sentenceToSpeak.isNotEmpty() && !sentenceToSpeak.startsWith("[[")) { // Don't speak commands
-                                         withContext(Dispatchers.Main) {
-                                              speak(sentenceToSpeak, shouldListenAfter = false) // Stream speaking
-                                         }
-                                    }
-                                    currentSentence.clear()
-                                }
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-
-                // Flush remaining text
-                val finalSentence = currentSentence.toString().trim()
-                if (finalSentence.isNotEmpty() && !finalSentence.startsWith("[[")) {
-                     withContext(Dispatchers.Main) {
-                          speak(finalSentence, shouldListenAfter = true) // Final listen
-                     }
-                }
-
-                ChatHistoryManager.addMessage("assistant", fullReply.toString())
-
-                // Execute commands AFTER full generation to ensure context
-                commandManager.executeCommand(fullReply.toString())
-
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Log.e("OverlayService", "Network Error: ${e.message}", e)
+            if (!success && consecutiveFailures >= maxFailures) {
                 withContext(Dispatchers.Main) {
-                    speak("Connection error: ${e.message}", shouldListenAfter = false)
+                    Log.e("Overlay", "All tokens exhausted with 429.")
+                    speak("Cooling off", shouldListenAfter = false)
+                    Log.d("Overlay", "Done handling request.")
                 }
             }
         }
