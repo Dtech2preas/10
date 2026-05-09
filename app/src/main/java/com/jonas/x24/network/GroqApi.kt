@@ -12,7 +12,7 @@ data class GroqMessage(
 )
 
 data class GroqRequest(
-    val model: String = "llama3-8b-8192", // or llama3-70b-8192
+    val model: String = "llama-3.1-8b-instant", // or llama3-70b-8192
     val messages: List<GroqMessage>,
     val stream: Boolean = true
 )

@@ -12,14 +12,14 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.util.Log
-import android.view.LayoutInflater
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.EditText
-import kotlinx.coroutines.withContext
+import android.widget.LinearLayout
+import android.view.LayoutInflater
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import android.widget.TextView
@@ -43,10 +43,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var mediaPlayer: android.media.MediaPlayer? = null
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var commandManager: CommandManager
-    private lateinit var tvLog: TextView
+    private lateinit var btnOpenLogs: Button
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
-    private lateinit var etGroqToken: EditText
+    private lateinit var llTokensContainer: LinearLayout
+    private lateinit var btnAddToken: Button
     private lateinit var etBrainUrl: EditText
     private lateinit var btnSaveSettings: Button
     private lateinit var btnRefetchBrain: Button
@@ -60,7 +61,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         sharedPreferences = getSharedPreferences("x24_prefs", MODE_PRIVATE)
 
-        tvLog = findViewById(R.id.tvLog)
+        btnOpenLogs = findViewById(R.id.btnOpenLogs)
+        btnOpenLogs.setOnClickListener {
+            startActivity(Intent(this, LogActivity::class.java))
+        }
         btnTalk = findViewById(R.id.btnTalk)
         btnChangeVoice = findViewById(R.id.btnChangeVoice)
         btnOverlay = findViewById(R.id.btnOverlay)
@@ -82,20 +86,41 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-                etGroqToken = findViewById(R.id.etGroqToken)
+                llTokensContainer = findViewById(R.id.llTokensContainer)
+        btnAddToken = findViewById(R.id.btnAddToken)
         etBrainUrl = findViewById(R.id.etBrainUrl)
         btnSaveSettings = findViewById(R.id.btnSaveSettings)
         btnRefetchBrain = findViewById(R.id.btnRefetchBrain)
 
         // Load existing settings
-        etGroqToken.setText(sharedPreferences.getString("groq_token", ""))
+
         etBrainUrl.setText(sharedPreferences.getString("brain_url", "https://www.preasx24.co.za/brain.txt"))
 
+        val savedTokens = TokenManager.getTokens(sharedPreferences)
+        if (savedTokens.isEmpty()) {
+            addTokenRow("")
+        } else {
+            savedTokens.forEach { addTokenRow(it) }
+        }
+
+        btnAddToken.setOnClickListener {
+            addTokenRow("")
+        }
+
         btnSaveSettings.setOnClickListener {
-            val token = etGroqToken.text.toString().trim()
+            val tokens = mutableListOf<String>()
+            for (i in 0 until llTokensContainer.childCount) {
+                val row = llTokensContainer.getChildAt(i)
+                val et = row.findViewById<EditText>(R.id.etToken)
+                val t = et.text.toString().trim()
+                if (t.isNotEmpty()) {
+                    tokens.add(t)
+                }
+            }
+            TokenManager.saveTokens(sharedPreferences, tokens)
+
             val url = etBrainUrl.text.toString().trim()
             sharedPreferences.edit().apply {
-                putString("groq_token", token)
                 putString("brain_url", url)
                 apply()
             }
@@ -275,45 +300,86 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+
+    private fun addTokenRow(tokenText: String) {
+        val row = LayoutInflater.from(this).inflate(R.layout.item_token, llTokensContainer, false)
+        val etToken = row.findViewById<EditText>(R.id.etToken)
+        val btnRemove = row.findViewById<Button>(R.id.btnRemove)
+
+        etToken.setText(tokenText)
+        btnRemove.setOnClickListener {
+            llTokensContainer.removeView(row)
+        }
+        llTokensContainer.addView(row)
+    }
+
     private fun processUserInput(input: String) {
         ChatHistoryManager.addMessage("user", input)
 
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val groqToken = sharedPreferences.getString("groq_token", "") ?: ""
-                if (groqToken.isEmpty()) {
+            val tokens = TokenManager.getTokens(sharedPreferences)
+            if (tokens.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    speak("Please set your Groq API token.")
+                    btnTalk.text = "TALK"
+                }
+                return@launch
+            }
+
+            val systemPrompt = sharedPreferences.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+            val messages = mutableListOf(GroqMessage("system", systemPrompt))
+            messages.addAll(ChatHistoryManager.getHistory())
+            val request = GroqRequest(messages = messages, stream = false)
+
+            var consecutiveFailures = 0
+            val maxFailures = tokens.size
+            var success = false
+
+            while (consecutiveFailures < maxFailures && !success) {
+                val currentToken = TokenManager.getNextToken(sharedPreferences) ?: break
+                try {
+                    val response = RetrofitClient.groqApi.chatCompletions("Bearer $currentToken", request)
+                    success = true
+
+                    val rawReply = response.choices.firstOrNull()?.message?.content ?: ""
+                    val cleanReply = commandManager.executeCommand(rawReply)
+
                     withContext(Dispatchers.Main) {
-                        speak("Please set your Groq API token.")
+                        log("x24: $cleanReply")
+                        ChatHistoryManager.addMessage("assistant", cleanReply)
+                        speak(cleanReply)
+                        btnTalk.text = "TALK"
+                    }
+                } catch (e: retrofit2.HttpException) {
+                    if (e.code() == 429) {
+                        consecutiveFailures++
+                        withContext(Dispatchers.Main) {
+                            log("Token failed with 429. Trying next...")
+                        }
+                    } else {
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            log("Network Error: ${e.message}")
+                            speak("I cannot reach the server right now.")
+                            btnTalk.text = "TALK"
+                        }
+                        return@launch
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        log("Network Error: ${e.message}")
+                        speak("I cannot reach the server right now.")
                         btnTalk.text = "TALK"
                     }
                     return@launch
                 }
+            }
 
-                val systemPrompt = sharedPreferences.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
-                val messages = mutableListOf(GroqMessage("system", systemPrompt))
-                messages.addAll(ChatHistoryManager.getHistory())
-
-                val request = GroqRequest(messages = messages, stream = false)
-                val response = RetrofitClient.groqApi.chatCompletions("Bearer $groqToken", request)
-
-                val rawReply = response.choices.firstOrNull()?.message?.content ?: ""
-
-                // Execute commands (background thread for Geocoder/etc)
-                val cleanReply = commandManager.executeCommand(rawReply)
-
+            if (!success && consecutiveFailures >= maxFailures) {
                 withContext(Dispatchers.Main) {
-                    log("x24: $cleanReply")
-                    // Save the final spoken result to history so the AI knows the outcome
-                    ChatHistoryManager.addMessage("assistant", cleanReply)
-
-                    speak(cleanReply)
-                    btnTalk.text = "TALK"
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    log("Network Error: ${e.message}")
-                    speak("I cannot reach the server right now.")
+                    log("All tokens exhausted with 429.")
+                    speak("Cooling off")
                     btnTalk.text = "TALK"
                 }
             }
@@ -495,10 +561,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun log(text: String) {
-        tvLog.append("\n$text")
-        // Scroll to bottom
-        val scroll = tvLog.parent as? android.widget.ScrollView
-        scroll?.post { scroll.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+        LogManager.log(text)
     }
 
     override fun onInit(status: Int) {
