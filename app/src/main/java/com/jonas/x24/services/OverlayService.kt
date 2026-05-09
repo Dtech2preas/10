@@ -35,10 +35,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import com.jonas.x24.R
 import com.jonas.x24.commands.CommandManager
-import com.jonas.x24.network.ChatRequest
-import com.jonas.x24.network.Message
 import com.jonas.x24.network.RetrofitClient
-import com.jonas.x24.network.TtsRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -330,8 +327,9 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
             } catch (e: Exception) {
                 e.printStackTrace()
+                Log.e("OverlayService", "Network Error: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    speak("Connection error.", shouldListenAfter = false)
+                    speak("Connection error: ${e.message}", shouldListenAfter = false)
                 }
             }
         }
