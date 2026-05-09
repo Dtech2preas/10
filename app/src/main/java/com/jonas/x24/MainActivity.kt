@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.EditText
+import android.widget.LinearLayout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -45,7 +46,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnOpenLogs: Button
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
-    private lateinit var etGroqToken: EditText
+    private lateinit var llTokenContainer: LinearLayout
+    private lateinit var btnAddToken: Button
     private lateinit var etBrainUrl: EditText
     private lateinit var btnSaveSettings: Button
     private lateinit var btnRefetchBrain: Button
@@ -84,23 +86,39 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-                etGroqToken = findViewById(R.id.etGroqToken)
+        llTokenContainer = findViewById(R.id.llTokenContainer)
+        btnAddToken = findViewById(R.id.btnAddToken)
         etBrainUrl = findViewById(R.id.etBrainUrl)
         btnSaveSettings = findViewById(R.id.btnSaveSettings)
         btnRefetchBrain = findViewById(R.id.btnRefetchBrain)
 
-        // Load existing settings
-        etGroqToken.setText(sharedPreferences.getString("groq_token", ""))
+        TokenManager.init(this)
+        loadTokensToUI()
+
         etBrainUrl.setText(sharedPreferences.getString("brain_url", "https://www.preasx24.co.za/brain.txt"))
 
+        btnAddToken.setOnClickListener {
+            addTokenView("")
+        }
+
         btnSaveSettings.setOnClickListener {
-            val token = etGroqToken.text.toString().trim()
+            val tokens = mutableListOf<String>()
+            for (i in 0 until llTokenContainer.childCount) {
+                val view = llTokenContainer.getChildAt(i)
+                val etToken = view.findViewById<EditText>(R.id.etTokenValue)
+                val token = etToken.text.toString().trim()
+                if (token.isNotEmpty()) {
+                    tokens.add(token)
+                }
+            }
+            val tokensString = tokens.joinToString(",")
             val url = etBrainUrl.text.toString().trim()
             sharedPreferences.edit().apply {
-                putString("groq_token", token)
+                putString("groq_token", tokensString)
                 putString("brain_url", url)
                 apply()
             }
+            TokenManager.loadTokens(sharedPreferences)
             log("Settings saved.")
             speak("Settings saved.")
         }
@@ -282,8 +300,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val groqToken = sharedPreferences.getString("groq_token", "") ?: ""
-                if (groqToken.isEmpty()) {
+                if (TokenManager.getTokens().isEmpty()) {
                     withContext(Dispatchers.Main) {
                         speak("Please set your Groq API token.")
                         btnTalk.text = "TALK"
@@ -296,7 +313,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 messages.addAll(ChatHistoryManager.getHistory())
 
                 val request = GroqRequest(messages = messages, stream = false)
-                val response = RetrofitClient.groqApi.chatCompletions("Bearer $groqToken", request)
+                val response = TokenManager.chatCompletions(request)
 
                 val rawReply = response.choices.firstOrNull()?.message?.content ?: ""
 
@@ -309,6 +326,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     ChatHistoryManager.addMessage("assistant", cleanReply)
 
                     speak(cleanReply)
+                    btnTalk.text = "TALK"
+                }
+            } catch (e: com.jonas.x24.network.AllTokensFailedException) {
+                withContext(Dispatchers.Main) {
+                    log("All tokens failed: 429 Cooling off")
+                    speak("Cooling off")
                     btnTalk.text = "TALK"
                 }
             } catch (e: Exception) {
@@ -456,6 +479,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             log("Error showing settings: ${e.message}")
             e.printStackTrace()
         }
+    }
+
+    private fun loadTokensToUI() {
+        llTokenContainer.removeAllViews()
+        val tokens = TokenManager.getTokens()
+        if (tokens.isEmpty()) {
+            addTokenView("")
+        } else {
+            for (token in tokens) {
+                addTokenView(token)
+            }
+        }
+    }
+
+    private fun addTokenView(tokenValue: String) {
+        val view = LayoutInflater.from(this).inflate(R.layout.item_token, llTokenContainer, false)
+        val etToken = view.findViewById<EditText>(R.id.etTokenValue)
+        val btnRemove = view.findViewById<Button>(R.id.btnRemoveToken)
+
+        etToken.setText(tokenValue)
+
+        btnRemove.setOnClickListener {
+            llTokenContainer.removeView(view)
+        }
+
+        llTokenContainer.addView(view)
     }
 
     private fun speak(text: String) {
