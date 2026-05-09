@@ -186,16 +186,18 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     if (timeSinceLast < 60000) {
                         // Restart listening silently to keep the 1-minute window active
                         Handler(Looper.getMainLooper()).postDelayed({
-                            // Start listening directly without updating lastInteractionTime
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                            try {
-                                speechRecognizer.startListening(intent)
-                                isListening = true
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            if (!isListening) {
+                                // Start listening directly without updating lastInteractionTime
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                                try {
+                                    speechRecognizer.startListening(intent)
+                                    isListening = true
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
                             }
                         }, 100)
                     } else {
@@ -203,6 +205,9 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     }
                 } else if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
                     speak("Network error.", shouldListenAfter = false)
+                } else if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    speechRecognizer.cancel()
+                    isListening = false
                 } else {
                     Log.e("OverlayService", "Speech recognizer error: $errorMessage")
                     LogManager.log("Speech Error: $errorMessage")
@@ -223,7 +228,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private fun toggleListening() {
         if (isListening) {
-            speechRecognizer.stopListening()
+            speechRecognizer.cancel()
             isListening = false
         } else {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -252,6 +257,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     mediaPlayer?.release()
                     mediaPlayer = null
                 } catch (e: Exception) {}
+                speechRecognizer.cancel()
                 isListening = false
                 lastInteractionTime = System.currentTimeMillis()
                 toggleListening()
@@ -269,6 +275,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 mediaPlayer = null
             } catch (e: Exception) {}
             // Do not restart listening
+            speechRecognizer.cancel()
             isListening = false
             return
         } else if (lowerText == "wait") {
@@ -279,6 +286,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 mediaPlayer?.release()
                 mediaPlayer = null
             } catch (e: Exception) {}
+            speechRecognizer.cancel()
             isListening = false
             lastInteractionTime = System.currentTimeMillis()
             toggleListening()
@@ -297,8 +305,8 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         Log.d("Overlay", "Prompt: $prompt")
         LogManager.log("User (Overlay): $userText")
 
-        // Add user message to history
-        ChatHistoryManager.addMessage("user", prompt)
+        // Add pure user message to history without screen context to prevent payload bloat
+        ChatHistoryManager.addMessage("user", userText)
 
         // 3. Send to AI
         CoroutineScope(Dispatchers.IO).launch {
@@ -315,7 +323,17 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 }
 
                 val messages = mutableListOf(GroqMessage("system", systemPrompt))
-                messages.addAll(ChatHistoryManager.getHistory())
+
+                // Add chat history first (it contains the pure user text added above)
+                val historyMessages = ChatHistoryManager.getHistory().toMutableList()
+
+                // Modify the last user message to include the screen context before sending to the API
+                if (historyMessages.isNotEmpty() && historyMessages.last().role == "user") {
+                    val lastMsg = historyMessages.last()
+                    historyMessages[historyMessages.lastIndex] = GroqMessage("user", "[SCREEN_CONTEXT: $screenContext]\n\nUser: ${lastMsg.content}")
+                }
+
+                messages.addAll(historyMessages)
 
                 val request = GroqRequest(messages = messages)
                 val responseBody = com.jonas.x24.TokenManager.chatCompletionsStream(request)
@@ -417,12 +435,18 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         // Speak using local TTS
         tts.speak(text, TextToSpeech.QUEUE_ADD, null, "TTS_ID")
 
-        // Try to start listening immediately so user can interrupt with "wait"
-        if (!isListening) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                toggleListening()
-            }, 500)
+        // Cancel any existing recognition if we're speaking so they don't collide
+        if (isListening) {
+            speechRecognizer.cancel()
+            isListening = false
         }
+
+        // Try to start listening immediately so user can interrupt with "wait"
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isListening) {
+                toggleListening()
+            }
+        }, 500)
     }
 
     private fun playAudio(file: java.io.File) {
