@@ -18,6 +18,10 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.SeekBar
 import android.widget.Spinner
+import android.widget.EditText
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
@@ -43,6 +47,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tvLog: TextView
     private lateinit var btnTalk: Button
     private lateinit var btnChangeVoice: Button
+    private lateinit var etGroqToken: EditText
+    private lateinit var etBrainUrl: EditText
+    private lateinit var btnSaveSettings: Button
+    private lateinit var btnRefetchBrain: Button
+
     private lateinit var btnOverlay: Button
     private lateinit var sharedPreferences: SharedPreferences
 
@@ -74,6 +83,59 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 startListening()
             } else {
                 log("Speech recognition not available on this device.")
+            }
+        }
+
+                etGroqToken = findViewById(R.id.etGroqToken)
+        etBrainUrl = findViewById(R.id.etBrainUrl)
+        btnSaveSettings = findViewById(R.id.btnSaveSettings)
+        btnRefetchBrain = findViewById(R.id.btnRefetchBrain)
+
+        // Load existing settings
+        etGroqToken.setText(sharedPreferences.getString("groq_token", ""))
+        etBrainUrl.setText(sharedPreferences.getString("brain_url", "https://www.preasx24.co.za/brain.txt"))
+
+        btnSaveSettings.setOnClickListener {
+            val token = etGroqToken.text.toString().trim()
+            val url = etBrainUrl.text.toString().trim()
+            sharedPreferences.edit().apply {
+                putString("groq_token", token)
+                putString("brain_url", url)
+                apply()
+            }
+            log("Settings saved.")
+            speak("Settings saved.")
+        }
+
+        btnRefetchBrain.setOnClickListener {
+            val url = sharedPreferences.getString("brain_url", "https://www.preasx24.co.za/brain.txt") ?: return@setOnClickListener
+            log("Fetching brain from: $url")
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val client = OkHttpClient()
+                    val request = Request.Builder().url(url).build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val brainText = response.body?.string() ?: ""
+                        if (brainText.isNotEmpty()) {
+                            sharedPreferences.edit().putString("system_prompt", brainText).apply()
+                            withContext(Dispatchers.Main) {
+                                log("Brain refetched successfully.")
+                                speak("Brain updated.")
+                            }
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            log("Failed to fetch brain: ${response.code}")
+                            speak("Failed to fetch brain.")
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        log("Error fetching brain: ${e.message}")
+                        speak("Error fetching brain.")
+                    }
+                }
             }
         }
 
@@ -398,26 +460,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // Stop local TTS
         tts.stop()
 
-        // Azure TTS Call
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val responseBody = RetrofitClient.api.tts(TtsRequest(text))
-                val bytes = responseBody.bytes()
-
-                val tempFile = java.io.File.createTempFile("tts_audio", ".mp3", cacheDir)
-                java.io.FileOutputStream(tempFile).use { it.write(bytes) }
-
-                withContext(Dispatchers.Main) {
-                    playAudio(tempFile)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    log("Azure TTS Failed (${e.message}), falling back to local.")
-                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
-                }
-            }
-        }
+        // Speak using local TTS
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
     private fun playAudio(file: java.io.File) {
