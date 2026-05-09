@@ -27,10 +27,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import com.jonas.x24.commands.CommandManager
-import com.jonas.x24.network.ChatRequest
-import com.jonas.x24.network.Message
+import com.jonas.x24.network.GroqMessage
+import com.jonas.x24.network.GroqRequest
 import com.jonas.x24.network.RetrofitClient
-import com.jonas.x24.network.TtsRequest
 import com.jonas.x24.services.AutomationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,9 +53,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var btnOverlay: Button
     private lateinit var sharedPreferences: SharedPreferences
-
-    // Keep limited history to avoid token limits
-    private val history = mutableListOf<Message>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -280,12 +276,27 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun processUserInput(input: String) {
-        history.add(Message("user", input))
+        ChatHistoryManager.addMessage("user", input)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val response = RetrofitClient.api.chat(ChatRequest(history))
-                val rawReply = response.reply
+                val groqToken = sharedPreferences.getString("groq_token", "") ?: ""
+                if (groqToken.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        speak("Please set your Groq API token.")
+                        btnTalk.text = "TALK"
+                    }
+                    return@launch
+                }
+
+                val systemPrompt = sharedPreferences.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+                val messages = mutableListOf(GroqMessage("system", systemPrompt))
+                messages.addAll(ChatHistoryManager.getHistory())
+
+                val request = GroqRequest(messages = messages, stream = false)
+                val response = RetrofitClient.groqApi.chatCompletions("Bearer $groqToken", request)
+
+                val rawReply = response.choices.firstOrNull()?.message?.content ?: ""
 
                 // Execute commands (background thread for Geocoder/etc)
                 val cleanReply = commandManager.executeCommand(rawReply)
@@ -293,7 +304,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 withContext(Dispatchers.Main) {
                     log("x24: $cleanReply")
                     // Save the final spoken result to history so the AI knows the outcome
-                    history.add(Message("assistant", cleanReply))
+                    ChatHistoryManager.addMessage("assistant", cleanReply)
 
                     speak(cleanReply)
                     btnTalk.text = "TALK"
