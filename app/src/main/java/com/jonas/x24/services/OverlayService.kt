@@ -331,7 +331,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    speak("Connection error.", shouldListenAfter = false)
+                    speak("Error: ${e.message}", shouldListenAfter = false)
                 }
             }
         }
