@@ -308,7 +308,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     return@launch
                 }
 
-                val systemPrompt = sharedPreferences.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+                val basePrompt = sharedPreferences.getString("system_prompt", "You are x24, a helpful AI assistant.") ?: "You are x24, a helpful AI assistant."
+                val agenticInjection = "\n\n[CRITICAL SYSTEM DIRECTIVE]: You now operate in a SILENT AGENTIC LOOP. When executing multi-step tasks, DO NOT output multiple commands at once (e.g. OPEN_APP followed immediately by WAIT and CLICK_TEXT). Instead, output ONE command, and the system will silently execute it and feed the result back to you. You must then evaluate the new [SCREEN_CONTEXT] and output the NEXT command. Continue this loop silently until the task is fully complete. ONLY speak naturally to the user when you have finished the task or need their input. NEVER speak raw screen data or your step-by-step internal thoughts aloud."
+                val systemPrompt = basePrompt + agenticInjection
+
                 val messages = mutableListOf(GroqMessage("system", systemPrompt))
                 messages.addAll(ChatHistoryManager.getHistory())
 

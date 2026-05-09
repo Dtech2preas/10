@@ -105,29 +105,22 @@ class AutomationService : Service() {
     // --- Rule Engines ---
 
     private fun checkBatteryRules(pct: Float) {
-        // If battery low (< 20%) -> Turn on battery saver (if feasible) or notify
+        // If battery low (< 20%) -> Proactively warn user via OverlayService
         if (pct < 20 && !prefs.getBoolean("low_batt_triggered", false)) {
-            // Logic to trigger actions
-            // For now, we simulate by adjusting brightness down
-            adjustBrightness(50)
             prefs.edit().putBoolean("low_batt_triggered", true).apply()
-            Log.d("x24Auto", "Low Battery: Reducing brightness")
-        } else if (pct > 20) {
+            Log.d("x24Auto", "Low Battery Triggered")
+            OverlayService.instance?.triggerProactiveConversation("[SYSTEM: The device battery has dropped to ${pct.toInt()}%. Proactively speak to the user to warn them warmly.]")
+        } else if (pct > 25) { // Reset threshold higher to prevent bouncing
             prefs.edit().putBoolean("low_batt_triggered", false).apply()
         }
     }
 
     private fun checkChargingRules(isCharging: Boolean) {
-        // If charging -> Increase brightness / Performance?
-        if (isCharging) {
-             adjustBrightness(200)
-             Log.d("x24Auto", "Charging: Brightness up")
-        }
+        // Currently handled implicitly or by system. Can add AI triggers later.
     }
 
     private fun checkConnectivityRules() {
-        // If WiFi connected -> maybe turn off Data (system handles this usually)
-        // If Headphones connected -> Open Music? (Need specific receiver for headset)
+        // Currently handled implicitly or by system. Can add AI triggers later.
     }
 
     private fun checkTimeRules() {
@@ -136,10 +129,8 @@ class AutomationService : Service() {
 
         // Morning Briefing Trigger (e.g., 8 AM)
         if (hour == 8 && !prefs.getBoolean("morning_brief_done", false)) {
-             // We can't speak directly from Service easily without TTS instance.
-             // We could send broadcast to MainActivity if it's alive, or Notification.
-             sendNotification("Good Morning", "Ready for your briefing?")
              prefs.edit().putBoolean("morning_brief_done", true).apply()
+             OverlayService.instance?.triggerProactiveConversation("[SYSTEM: It is 8 AM. Proactively start a morning conversation with the user. Greet them, ask how they slept, or suggest checking notifications.]")
         }
 
         // Reset flags at midnight
@@ -147,11 +138,15 @@ class AutomationService : Service() {
              prefs.edit().putBoolean("morning_brief_done", false).apply()
         }
 
-        // Night Mode (e.g., 11 PM)
-        if (hour == 23) {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-            adjustBrightness(20)
+        // Night Mode trigger (e.g. 11 PM)
+        if (hour == 23 && !prefs.getBoolean("night_brief_done", false)) {
+             prefs.edit().putBoolean("night_brief_done", true).apply()
+             OverlayService.instance?.triggerProactiveConversation("[SYSTEM: It is 11 PM. Proactively tell the user it is getting late, ask if they need an alarm set, or just wish them a good night.]")
+        }
+
+        // Reset night flag at noon
+        if (hour == 12) {
+             prefs.edit().putBoolean("night_brief_done", false).apply()
         }
     }
 
@@ -172,7 +167,11 @@ class AutomationService : Service() {
             .build()
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(System.currentTimeMillis().toInt(), notification)
+        try {
+            manager.notify(System.currentTimeMillis().toInt(), notification)
+        } catch (e: SecurityException) {
+            Log.e("x24Auto", "Missing POST_NOTIFICATIONS permission", e)
+        }
     }
 
     // --- Setup ---

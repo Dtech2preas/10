@@ -34,24 +34,24 @@ class CommandManager(private val context: Context) {
         val pattern = Pattern.compile("\\[\\[COMMAND:([^|\\]]+)(?:\\|([^\\]]+))?\\]\\]")
         val matcher = pattern.matcher(rawText)
 
-        var cleanText = rawText
         val additionalOutput = StringBuilder()
 
         while (matcher.find()) {
-            val fullTag = matcher.group(0)
             val type = matcher.group(1)
             val valueString = matcher.group(2) ?: ""
 
-            // Remove the tag from the spoken text
-            cleanText = cleanText.replace(fullTag, "")
-
             val result = performAction(type, valueString)
+
+            // Only append the result if there is one (e.g. read screen, open app error)
+            // It will be sent silently back to the AI loop.
             if (!result.isNullOrEmpty()) {
-                additionalOutput.append(" ").append(result)
+                additionalOutput.append("[$type Result]: ").append(result).append("\n")
+            } else {
+                additionalOutput.append("[$type Result]: Success.\n")
             }
         }
 
-        return (cleanText + additionalOutput.toString()).trim()
+        return additionalOutput.toString().trim()
     }
 
     private fun performAction(type: String, valueString: String): String? {
@@ -284,18 +284,12 @@ class CommandManager(private val context: Context) {
     private fun readScreen(): String {
         val service = x24AccessibilityService.instance ?: return "Accessibility service not running."
         val rawContext = service.getScreenContext()
-        // Simplify for spoken text
-        var spokenContext = rawContext.replace(Regex("\\(bounds.*?\\)"), "")
-        spokenContext = spokenContext.replace("[Text]", "")
-        spokenContext = spokenContext.replace("[Button]", "Button:")
-        spokenContext = spokenContext.replace("[Input]", "Input field:")
-        spokenContext = spokenContext.replace("[Scrollable]", "")
-        spokenContext = spokenContext.trim()
 
-        if (spokenContext.isEmpty()) {
-            return "I don't see any readable text on the screen."
-        }
-        return spokenContext
+        // Since we now have a silent Agentic Loop, we want to return the full raw context
+        // to the AI so it can figure out the coordinates and exact UI structure itself.
+        // It will NOT be spoken aloud anymore.
+        if (rawContext.isEmpty()) return "Screen is empty."
+        return rawContext
     }
 
     private fun scroll(direction: String) {
@@ -538,14 +532,27 @@ class CommandManager(private val context: Context) {
     }
 
     private fun readNotifications(): String {
-        val notifs = x24NotificationService.recentNotifications
-        if (notifs.isEmpty()) {
+        val activeNotifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
+        val recentNotifs = x24NotificationService.recentNotifications
+
+        if (activeNotifs.isEmpty() && recentNotifs.isEmpty()) {
             return "You have no new notifications."
         }
-        val sb = java.lang.StringBuilder("Here are your recent notifications: ")
-        for ((index, notif) in notifs.withIndex()) {
-            sb.append("${index + 1}: $notif. ")
+
+        val sb = java.lang.StringBuilder()
+        if (activeNotifs.isNotEmpty()) {
+            sb.append("Current notifications: ")
+            for ((index, notif) in activeNotifs.withIndex()) {
+                sb.append("${index + 1}: $notif. ")
+            }
+        } else {
+            sb.append("No active notifications right now. ")
+            sb.append("Here are your recent notifications: ")
+            for ((index, notif) in recentNotifs.take(5).withIndex()) {
+                sb.append("${index + 1}: $notif. ")
+            }
         }
+
         return sb.toString()
     }
 
