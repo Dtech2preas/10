@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "988834871942",
+    "project_id": "pppp-5343b",
+    "storage_bucket": "pppp-5343b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:988834871942:android:c0d3ede6c1f150718e6f07",
+        "android_client_info": {
+          "package_name": "com.jonas.x24"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCELzcbqWcBHOYuEvlflXYtDQ8Jn8SajZ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
