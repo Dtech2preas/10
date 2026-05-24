@@ -23,7 +23,13 @@ class FirebaseCommandService : Service() {
     private var listener: ValueEventListener? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val key = intent?.getStringExtra("SESSION_KEY")
+        var key = intent?.getStringExtra("SESSION_KEY")
+
+        if (key == null) {
+            val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+            key = prefs.getString("SESSION_KEY", null)
+        }
+
         if (key != null) {
             sessionKey = key
             setupFirebaseListener(key)

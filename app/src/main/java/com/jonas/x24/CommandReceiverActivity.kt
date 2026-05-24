@@ -149,12 +149,17 @@ class CommandReceiverActivity : AppCompatActivity() {
     }
 
     private fun readNotifications() {
-        val notifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
-        val text = if (notifs.isEmpty()) {
-            "No active notifications."
+        val activeNotifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
+        val recentNotifs = x24NotificationService.recentNotifications
+
+        val text = if (activeNotifs.isNotEmpty()) {
+            "Active Notifications:\n" + activeNotifs.joinToString("\n")
+        } else if (recentNotifs.isNotEmpty()) {
+            "No active notifications. Recent:\n" + recentNotifs.joinToString("\n")
         } else {
-            notifs.joinToString("\n")
+            "No notifications found."
         }
+
         postResult("TEXT", text)
         finish()
     }
@@ -175,8 +180,8 @@ class CommandReceiverActivity : AppCompatActivity() {
 
         try {
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             recorder.setOutputFile(outputFile.absolutePath)
             recorder.prepare()
             recorder.start()
@@ -186,7 +191,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                     recorder.stop()
                     recorder.release()
 
-                    val bytes = FileInputStream(outputFile).readBytes()
+                    val bytes = java.io.FileInputStream(outputFile).readBytes()
                     val base64 = Base64.encodeToString(bytes, Base64.DEFAULT)
                     postResult("AUDIO", base64)
                 } catch (e: Exception) {
@@ -199,6 +204,7 @@ class CommandReceiverActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             postResult("ERROR", "Recorder error: ${e.message}")
+            outputFile.delete()
             finish()
         }
     }
@@ -245,32 +251,40 @@ class CommandReceiverActivity : AppCompatActivity() {
 
         // Add a slight delay for the surface to render
         Handler(Looper.getMainLooper()).postDelayed({
-            val image = imageReader.acquireLatestImage()
-            if (image != null) {
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * width
+            try {
+                val image = imageReader.acquireLatestImage()
+                if (image != null) {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
 
-                val bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(buffer)
-                image.close()
+                    val bitmapWidth = rowStride / pixelStride
 
-                // Crop out row padding
-                val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height)
+                    val bitmap = Bitmap.createBitmap(bitmapWidth, height, Bitmap.Config.ARGB_8888)
+                    bitmap.copyPixelsFromBuffer(buffer)
+                    image.close()
 
-                val outputStream = ByteArrayOutputStream()
-                croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
-                val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
+                    // Crop out row padding
+                    val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height)
 
-                postResult("IMAGE", base64)
+                    val outputStream = java.io.ByteArrayOutputStream()
+                    croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
+                    val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
 
-                virtualDisplay.release()
-                mediaProjection.stop()
-                finish()
-            } else {
-                postResult("ERROR", "Failed to acquire image")
+                    postResult("IMAGE", base64)
+
+                    virtualDisplay.release()
+                    mediaProjection.stop()
+                    finish()
+                } else {
+                    postResult("ERROR", "Failed to acquire image")
+                    virtualDisplay.release()
+                    mediaProjection.stop()
+                    finish()
+                }
+            } catch (e: Exception) {
+                postResult("ERROR", "Screenshot failed: ${e.message}")
                 virtualDisplay.release()
                 mediaProjection.stop()
                 finish()
