@@ -3,10 +3,15 @@ package com.jonas.x24.services
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 
 class x24AccessibilityService : AccessibilityService() {
 
@@ -14,14 +19,44 @@ class x24AccessibilityService : AccessibilityService() {
         var instance: x24AccessibilityService? = null
     }
 
+    private var watchedApp: String? = null
+    private var sessionKey: String? = null
+    private var isListeningToFirebase = false
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         Log.d("x24Access", "Service Connected")
+
+        val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+        sessionKey = prefs.getString("SESSION_KEY", null)
+        setupFirebaseListener()
+    }
+
+    private fun setupFirebaseListener() {
+        if (sessionKey == null || isListeningToFirebase) return
+        isListeningToFirebase = true
+        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state").child("watchedApp")
+        stateRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                watchedApp = snapshot.getValue(String::class.java)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We can listen to events here (e.g. notifications, window changes)
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val packageName = event.packageName?.toString()
+            if (packageName != null && packageName == watchedApp && sessionKey != null) {
+                val alertsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("alerts")
+                val alertData = mapOf(
+                    "latestAlert" to "Watched App Opened: $packageName",
+                    "timestamp" to System.currentTimeMillis()
+                )
+                alertsRef.setValue(alertData)
+            }
+        }
     }
 
     override fun onInterrupt() {

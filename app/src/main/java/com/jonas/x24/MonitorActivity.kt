@@ -2,6 +2,7 @@ package com.jonas.x24
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaPlayer
@@ -65,6 +66,18 @@ class MonitorActivity : AppCompatActivity() {
         sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
         database = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey)
 
+        // Start alert service
+        val alertIntent = Intent(this, com.jonas.x24.services.MonitorAlertService::class.java)
+        alertIntent.putExtra("SESSION_KEY", sessionKey)
+        startService(alertIntent)
+
+        // Request POST_NOTIFICATIONS
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+
         mapView = findViewById(R.id.mapView)
         mapView.setMultiTouchControls(true)
 
@@ -111,6 +124,14 @@ class MonitorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
             sendCommand("GET_LOCATION")
             tabLayout.getTabAt(2)?.select() // Jump to Map
+        }
+
+        findViewById<Button>(R.id.btnApps).setOnClickListener {
+            startActivity(Intent(this, AppsActivity::class.java))
+        }
+
+        findViewById<Button>(R.id.btnDeviceStats).setOnClickListener {
+            startActivity(Intent(this, DeviceStatsActivity::class.java))
         }
 
         findViewById<Button>(R.id.btnLogout).setOnClickListener {

@@ -76,6 +76,18 @@
                     android:text="Get Location" />
 
                 <Button
+                    android:id="@+id/btnApps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Apps" />
+
+                <Button
+                    android:id="@+id/btnDeviceStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Device Stats" />
+
+                <Button
                     android:id="@+id/btnLogout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
