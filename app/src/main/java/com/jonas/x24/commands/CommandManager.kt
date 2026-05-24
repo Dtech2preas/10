@@ -106,7 +106,6 @@ class CommandManager(private val context: Context) {
                 "BACK" -> performGlobal(AccessibilityService.GLOBAL_ACTION_BACK)
                 "RECENTS" -> performGlobal(AccessibilityService.GLOBAL_ACTION_RECENTS)
                 "LOCK" -> performGlobal(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-                "SCREENSHOT" -> performGlobal(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
                 "SCROLL" -> scroll(valueString)
                 "SWIPE" -> swipe(valueString)
                 "CLICK" -> click(valueString)

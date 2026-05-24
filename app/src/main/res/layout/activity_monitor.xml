@@ -15,12 +15,6 @@
         android:layout_marginBottom="16dp"/>
 
     <Button
-        android:id="@+id/btnScreenshotA11y"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Take Screenshot (Accessibility)" />
-
-    <Button
         android:id="@+id/btnReadNotifications"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -56,6 +50,13 @@
         android:layout_height="wrap_content"
         android:text="Disconnect / Logout" />
 
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -63,6 +64,7 @@
         android:layout_marginTop="16dp">
 
         <LinearLayout
+            android:id="@+id/llResults"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
@@ -74,12 +76,13 @@
                 android:text="Results will appear here..."
                 android:textIsSelectable="true"/>
 
-            <ImageView
-                android:id="@+id/ivScreenshot"
-                android:layout_width="match_parent"
+            <Button
+                android:id="@+id/btnSaveAudio"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:adjustViewBounds="true"
-                android:layout_marginTop="16dp"/>
+                android:layout_marginTop="8dp"
+                android:text="Save Audio to Downloads"
+                android:visibility="gone" />
 
         </LinearLayout>
     </ScrollView>
