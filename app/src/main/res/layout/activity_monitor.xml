@@ -1,90 +1,154 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:background="@android:color/white">
 
-    <TextView
-        android:id="@+id/tvMonitorStatus"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Monitor Dashboard"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"/>
+        app:tabMode="fixed"
+        app:tabGravity="fill"
+        android:background="@color/purple_500"
+        app:tabTextColor="@color/white"
+        app:tabSelectedTextColor="@color/white"
+        app:tabIndicatorColor="@color/white" />
 
-    <Button
-        android:id="@+id/btnReadNotifications"
+    <FrameLayout
+        android:id="@+id/contentFrame"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Read Notifications" />
+        android:layout_height="match_parent">
 
-    <Button
-        android:id="@+id/btnReadScreen"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Read Screen Content" />
-
-    <Button
-        android:id="@+id/btnStartRecord"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Start Recording" />
-
-    <Button
-        android:id="@+id/btnStopRecord"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Stop Recording" />
-
-    <Button
-        android:id="@+id/btnGetLocation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Get Location" />
-
-    <Button
-        android:id="@+id/btnLogout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Disconnect / Logout" />
-
-    <org.osmdroid.views.MapView
-        android:id="@+id/mapView"
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:layout_marginTop="16dp"
-        android:visibility="gone" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="16dp">
-
-        <LinearLayout
-            android:id="@+id/llResults"
+        <!-- Controls Tab -->
+        <ScrollView
+            android:id="@+id/tabControls"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvResults"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="visible">
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Results will appear here..."
-                android:textIsSelectable="true"/>
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvMonitorStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Monitor Controls"
+                    android:textSize="24sp"
+                    android:textColor="@android:color/black"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"/>
+
+                <Button
+                    android:id="@+id/btnReadNotifications"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Read Notifications" />
+
+                <Button
+                    android:id="@+id/btnReadScreen"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Read Screen Content" />
+
+                <Button
+                    android:id="@+id/btnStartRecord"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Start Recording" />
+
+                <Button
+                    android:id="@+id/btnStopRecord"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Stop Recording" />
+
+                <Button
+                    android:id="@+id/btnGetLocation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Get Location" />
+
+                <Button
+                    android:id="@+id/btnLogout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:backgroundTint="@android:color/holo_red_dark"
+                    android:text="Disconnect / Logout" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Screen Reconstruction Tab -->
+        <FrameLayout
+            android:id="@+id/tabScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/darker_gray"
+            android:visibility="gone">
+
+            <com.jonas.x24.ScreenReconstructionView
+                android:id="@+id/screenReconstructionView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
             <Button
-                android:id="@+id/btnSaveAudio"
+                android:id="@+id/btnFullScreenToggle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Save Audio to Downloads"
-                android:visibility="gone" />
+                android:layout_gravity="bottom|end"
+                android:layout_margin="16dp"
+                android:text="Full Screen" />
+        </FrameLayout>
 
-        </LinearLayout>
-    </ScrollView>
+        <!-- Map Tab -->
+        <FrameLayout
+            android:id="@+id/tabMap"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+            <org.osmdroid.views.MapView
+                android:id="@+id/mapView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
 
+        <!-- Results / Logs Tab -->
+        <ScrollView
+            android:id="@+id/tabResults"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/llResults"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvResults"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Logs and Results will appear here..."
+                    android:textColor="@android:color/black"
+                    android:textIsSelectable="true"/>
+
+                <Button
+                    android:id="@+id/btnSaveAudio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Save Audio to Downloads"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
 </LinearLayout>

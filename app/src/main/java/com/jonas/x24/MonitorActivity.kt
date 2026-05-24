@@ -7,6 +7,14 @@ import android.graphics.Color
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import java.util.regex.Pattern
+import android.graphics.Rect
+import android.view.WindowManager
+import android.view.WindowInsetsController
+import android.view.WindowInsets
+import android.widget.ScrollView
+import android.widget.FrameLayout
+import com.google.android.material.tabs.TabLayout
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
@@ -38,6 +46,15 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var mapView: MapView
     private lateinit var btnSaveAudio: Button
     private lateinit var llResults: LinearLayout
+
+    private lateinit var tabLayout: TabLayout
+    private lateinit var tabControls: ScrollView
+    private lateinit var tabScreen: FrameLayout
+    private lateinit var tabMap: FrameLayout
+    private lateinit var tabResults: ScrollView
+    private lateinit var screenReconstructionView: ScreenReconstructionView
+    private lateinit var btnFullScreenToggle: Button
+    private var isFullScreen = false
     private var lastAudioBase64: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,8 +70,21 @@ class MonitorActivity : AppCompatActivity() {
 
         btnSaveAudio = findViewById(R.id.btnSaveAudio)
         llResults = findViewById(R.id.llResults)
-
         tvResults = findViewById(R.id.tvResults)
+
+        tabLayout = findViewById(R.id.tabLayout)
+        tabControls = findViewById(R.id.tabControls)
+        tabScreen = findViewById(R.id.tabScreen)
+        tabMap = findViewById(R.id.tabMap)
+        tabResults = findViewById(R.id.tabResults)
+        screenReconstructionView = findViewById(R.id.screenReconstructionView)
+        btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
+
+        setupTabs()
+
+        btnFullScreenToggle.setOnClickListener {
+            toggleFullScreen()
+        }
 
         btnSaveAudio.setOnClickListener {
             saveLatestAudioToDownloads()
@@ -62,10 +92,12 @@ class MonitorActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnReadNotifications).setOnClickListener {
             sendCommand("READ_NOTIFICATIONS")
+            tabLayout.getTabAt(3)?.select() // Jump to Results
         }
 
         findViewById<Button>(R.id.btnReadScreen).setOnClickListener {
             sendCommand("READ_SCREEN")
+            tabLayout.getTabAt(1)?.select() // Jump to Screen Tab
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
@@ -78,6 +110,7 @@ class MonitorActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
             sendCommand("GET_LOCATION")
+            tabLayout.getTabAt(2)?.select() // Jump to Map
         }
 
         findViewById<Button>(R.id.btnLogout).setOnClickListener {
@@ -95,6 +128,57 @@ class MonitorActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         mapView.onPause()
+    }
+
+    private fun setupTabs() {
+        tabLayout.addTab(tabLayout.newTab().setText("Controls"))
+        tabLayout.addTab(tabLayout.newTab().setText("Screen"))
+        tabLayout.addTab(tabLayout.newTab().setText("Map"))
+        tabLayout.addTab(tabLayout.newTab().setText("Logs"))
+
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                tabControls.visibility = View.GONE
+                tabScreen.visibility = View.GONE
+                tabMap.visibility = View.GONE
+                tabResults.visibility = View.GONE
+
+                when (tab?.position) {
+                    0 -> tabControls.visibility = View.VISIBLE
+                    1 -> tabScreen.visibility = View.VISIBLE
+                    2 -> tabMap.visibility = View.VISIBLE
+                    3 -> tabResults.visibility = View.VISIBLE
+                }
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    private fun toggleFullScreen() {
+        isFullScreen = !isFullScreen
+        if (isFullScreen) {
+            tabLayout.visibility = View.GONE
+            btnFullScreenToggle.text = "Exit Full Screen"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                window.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+            }
+        } else {
+            tabLayout.visibility = View.VISIBLE
+            btnFullScreenToggle.text = "Full Screen"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            }
+        }
     }
 
     private fun logout() {
@@ -180,17 +264,22 @@ class MonitorActivity : AppCompatActivity() {
         when (type) {
             "TEXT" -> {
                 if (data.startsWith("Screen Context:")) {
-                    tv.text = "Screen Read Received:"
+                    tv.text = "Screen Read Received and Rendered in Screen Tab."
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                     container.addView(tv)
-                    buildScreenReadUI(data, container)
+                    buildScreenReadUI(data) // Parse and pass to ScreenReconstructionView
+
+                    // Switch to Screen tab if not already there
+                    tabLayout.getTabAt(1)?.select()
                 } else if (data.contains("Coords:")) {
                     tv.text = data
                     container.addView(tv)
                     parseLocationData(data, geoPoints)
+                    tabLayout.getTabAt(2)?.select() // Jump to Map
                 } else {
                     tv.text = "Text Result:\n$data"
                     container.addView(tv)
+                    tabLayout.getTabAt(3)?.select() // Jump to Logs
                 }
             }
             "AUDIO" -> {
@@ -204,49 +293,46 @@ class MonitorActivity : AppCompatActivity() {
                     setOnClickListener { playAudioFromBase64(data) }
                 }
                 container.addView(btnPlay)
+                tabLayout.getTabAt(3)?.select() // Jump to Logs
             }
             "ERROR" -> {
                 tv.text = "Error: $data"
                 tv.setTextColor(Color.RED)
                 container.addView(tv)
+                tabLayout.getTabAt(3)?.select() // Jump to Logs
             }
         }
 
         llResults.addView(container, 0) // Add to top
     }
 
-    private fun buildScreenReadUI(data: String, container: LinearLayout) {
+    private fun buildScreenReadUI(data: String) {
         val lines = data.lines().drop(1) // Drop "Screen Context:" line
+        val elements = mutableListOf<ScreenElement>()
+
+        // Example format: [Button] Submit (bounds: 100,200,300,400) id: submit_btn
+        val regex = Pattern.compile("\\[(.*?)\\](.*?)\\(bounds: (-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)\\)(.*)")
+
         for (line in lines) {
             if (line.isBlank()) continue
+            val matcher = regex.matcher(line)
+            if (matcher.find()) {
+                val type = matcher.group(1)?.trim() ?: "Text"
+                val label = matcher.group(2)?.trim() ?: ""
+                val left = matcher.group(3)?.toIntOrNull() ?: 0
+                val top = matcher.group(4)?.toIntOrNull() ?: 0
+                val right = matcher.group(5)?.toIntOrNull() ?: 0
+                val bottom = matcher.group(6)?.toIntOrNull() ?: 0
 
-            val itemTv = TextView(this).apply {
-                setPadding(16, 8, 16, 8)
-                text = line
-                setTextIsSelectable(true)
+                // Avoid degenerate bounds
+                if (right > left && bottom > top) {
+                    val rect = Rect(left, top, right, bottom)
+                    elements.add(ScreenElement(type, label, rect))
+                }
             }
-
-            if (line.startsWith("[Button]")) {
-                itemTv.setBackgroundColor(Color.parseColor("#e0e0e0"))
-                itemTv.setTextColor(Color.BLACK)
-            } else if (line.startsWith("[Input]")) {
-                itemTv.setBackgroundColor(Color.parseColor("#fff9c4")) // Light yellow
-                itemTv.setTextColor(Color.BLACK)
-            } else if (line.startsWith("[Scrollable]")) {
-                itemTv.setBackgroundColor(Color.parseColor("#e1bee7")) // Light purple
-                itemTv.setTextColor(Color.BLACK)
-            } else {
-                itemTv.setTextColor(Color.DKGRAY)
-            }
-
-            val marginParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(8, 4, 8, 4)
-            }
-            container.addView(itemTv, marginParams)
         }
+
+        screenReconstructionView.setElements(elements)
     }
 
     private fun parseLocationData(data: String, geoPoints: MutableList<GeoPoint>) {
