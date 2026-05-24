@@ -86,9 +86,6 @@
 
         <activity android:name=".MonitorActivity" />
         <activity android:name=".BeMonitoredActivity" />
-        <activity android:name=".CommandReceiverActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
-            android:excludeFromRecents="true" />
 
         <service
             android:name=".services.FirebaseCommandService"

@@ -53,6 +53,9 @@ dependencies {
     // LocalBroadcastManager
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
 
+    // OpenStreetMap
+    implementation 'org.osmdroid:osmdroid-android:6.1.18'
+
     // Firebase
     implementation platform('com.google.firebase:firebase-bom:32.7.1')
     implementation 'com.google.firebase:firebase-database'
