@@ -1,10 +1,11 @@
 package com.jonas.x24
 
 import android.content.Context
-import android.graphics.*
-import android.text.Layout
-import android.text.StaticLayout
-import android.text.TextPaint
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 
@@ -14,162 +15,116 @@ data class ScreenElement(
     val bounds: Rect
 )
 
-sealed class UiComponent {
-    data class MessageBubble(
-        val text: String,
-        val isSent: Boolean
-    ) : UiComponent()
-
-    data class Header(val text: String) : UiComponent()
-}
-
 class ScreenReconstructionView @JvmOverloads constructor(
     context: Context,
-    attrs: AttributeSet? = null
-) : View(context, attrs) {
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
 
-    private var components: List<UiComponent> = emptyList()
+    private var elements: List<ScreenElement> = emptyList()
 
-    fun setElements(elements: List<ScreenElement>) {
-        components = parse(elements)
+    // Hardcoded expected device dimensions (we can estimate if we don't know it,
+    // but usually coordinates are in physical pixels, e.g. 1080x2400)
+    // We will dynamically calculate max bounds based on input if needed.
+    private var maxRight = 1080
+    private var maxBottom = 2400
+
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.DKGRAY
+        strokeWidth = 2f
+    }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textSize = 30f // Will be scaled
+        textAlign = Paint.Align.CENTER
+    }
+
+    fun setElements(newElements: List<ScreenElement>) {
+        this.elements = newElements
+
+        // Auto-detect max bounds to scale appropriately
+        maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1080) ?: 1080
+        maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(2400) ?: 2400
+
         invalidate()
     }
 
-    // -----------------------------
-    // SMART PARSER
-    // -----------------------------
-    private fun parse(elements: List<ScreenElement>): List<UiComponent> {
-        val result = mutableListOf<UiComponent>()
-
-        for (el in elements) {
-
-            if (el.type == "Text") {
-
-                val text = el.label.trim()
-
-                if (text.isBlank()) continue
-
-                // Detect header
-                if (text.contains("WA Business", true)) {
-                    result.add(UiComponent.Header(text))
-                    continue
-                }
-
-                // Detect messages
-                if (text.length > 2) {
-                    val isSent = el.bounds.centerX() > 500
-                    result.add(
-                        UiComponent.MessageBubble(
-                            text = text,
-                            isSent = isSent
-                        )
-                    )
-                }
-            }
-        }
-
-        return result
-    }
-
-    // -----------------------------
-    // DRAW
-    // -----------------------------
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val bgPaint = Paint()
-        bgPaint.color = Color.parseColor("#ECE5DD")
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
-
-        var yOffset = 60f
-
-        for (component in components) {
-
-            when (component) {
-
-                is UiComponent.Header -> {
-                    yOffset = drawHeader(canvas, component.text, yOffset)
-                }
-
-                is UiComponent.MessageBubble -> {
-                    yOffset = drawMessage(canvas, component, yOffset)
-                }
+        if (elements.isEmpty()) {
+            val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.GRAY
+                textSize = 50f
+                textAlign = Paint.Align.CENTER
             }
-
-            yOffset += 20f // spacing
-        }
-    }
-
-    // -----------------------------
-    // HEADER
-    // -----------------------------
-    private fun drawHeader(canvas: Canvas, text: String, y: Float): Float {
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.color = Color.WHITE
-
-        val rect = RectF(40f, y, width - 40f, y + 120f)
-        canvas.drawRoundRect(rect, 40f, 40f, paint)
-
-        paint.color = Color.BLACK
-        paint.textSize = 40f
-
-        canvas.drawText(text, rect.left + 30f, rect.centerY(), paint)
-
-        return rect.bottom
-    }
-
-    // -----------------------------
-    // MESSAGE DRAW (FIXED 🔥)
-    // -----------------------------
-    private fun drawMessage(
-        canvas: Canvas,
-        msg: UiComponent.MessageBubble,
-        yStart: Float
-    ): Float {
-
-        val maxWidth = width * 0.7f
-
-        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
-        textPaint.color = Color.BLACK
-        textPaint.textSize = 36f
-
-        val staticLayout = StaticLayout.Builder
-            .obtain(msg.text, 0, msg.text.length, textPaint, maxWidth.toInt())
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, 1.2f)
-            .setIncludePad(false)
-            .build()
-
-        val bubbleWidth = staticLayout.width + 60f
-        val bubbleHeight = staticLayout.height + 40f
-
-        val left = if (msg.isSent) {
-            width - bubbleWidth - 40f
-        } else {
-            40f
+            canvas.drawText("No screen data", width / 2f, height / 2f, emptyPaint)
+            return
         }
 
-        val rect = RectF(
-            left,
-            yStart,
-            left + bubbleWidth,
-            yStart + bubbleHeight
-        )
+        // Calculate scaling factors so the reconstructed screen fits perfectly in the view
+        val scaleX = width.toFloat() / maxRight.toFloat()
+        val scaleY = height.toFloat() / maxBottom.toFloat()
 
-        val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        bubblePaint.color = if (msg.isSent)
-            Color.parseColor("#DCF8C6")
-        else
-            Color.WHITE
+        // Maintain aspect ratio, center it if needed, or just fill. Let's maintain aspect ratio.
+        val scale = minOf(scaleX, scaleY)
 
-        canvas.drawRoundRect(rect, 30f, 30f, bubblePaint)
+        val offsetX = (width - (maxRight * scale)) / 2f
+        val offsetY = (height - (maxBottom * scale)) / 2f
 
         canvas.save()
-        canvas.translate(rect.left + 30f, rect.top + 20f)
-        staticLayout.draw(canvas)
-        canvas.restore()
+        canvas.translate(offsetX, offsetY)
+        canvas.scale(scale, scale)
 
-        return rect.bottom
+        // Draw background phone screen
+        val bgPaint = Paint().apply { color = Color.parseColor("#f0f0f0") }
+        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), bgPaint)
+
+        // Draw outline of the screen
+        val screenOutlinePaint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = 5f
+        }
+        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), screenOutlinePaint)
+
+        // Draw elements back-to-front (though order in list usually top-to-bottom)
+        for (el in elements) {
+            val rectF = RectF(el.bounds)
+
+            // Set color based on type
+            when (el.type) {
+                "Button" -> boxPaint.color = Color.parseColor("#bbdefb") // Light blue
+                "Input" -> boxPaint.color = Color.parseColor("#fff9c4")  // Light yellow
+                "Scrollable" -> boxPaint.color = Color.parseColor("#f3e5f5") // Light purple
+                "Text" -> boxPaint.color = Color.WHITE
+                else -> boxPaint.color = Color.WHITE
+            }
+
+            canvas.drawRect(rectF, boxPaint)
+            canvas.drawRect(rectF, borderPaint)
+
+            // Draw text centered in the rect
+            val cx = rectF.centerX()
+            var cy = rectF.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2)
+
+            // Adaptive text size based on box height (rough estimate)
+            val adaptiveTextPaint = Paint(textPaint).apply {
+                textSize = (rectF.height() * 0.4f).coerceIn(20f, 60f)
+            }
+            cy = rectF.centerY() - ((adaptiveTextPaint.descent() + adaptiveTextPaint.ascent()) / 2)
+
+            // Clip text to bounds
+            canvas.save()
+            canvas.clipRect(rectF)
+            canvas.drawText(el.label, cx, cy, adaptiveTextPaint)
+            canvas.restore()
+        }
+
+        canvas.restore()
     }
 }
