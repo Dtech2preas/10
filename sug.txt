@@ -1,0 +1,163 @@
+# Device Information & Status Commands
+1. GET_BATTERY_STATUS - Check current battery percentage and charging state.
+2. GET_BATTERY_HEALTH - Retrieve battery health and condition.
+3. GET_BATTERY_TEMPERATURE - Read the current battery temperature.
+4. GET_BATTERY_VOLTAGE - Read the current battery voltage.
+5. GET_WIFI_STATUS - Check if Wi-Fi is enabled or disabled.
+6. GET_WIFI_SSID - Get the name of the connected Wi-Fi network.
+7. GET_WIFI_LINK_SPEED - Get the current connection speed of the Wi-Fi.
+8. GET_WIFI_SIGNAL_STRENGTH - Retrieve the RSSI of the Wi-Fi connection.
+9. GET_DEVICE_MANUFACTURER - Get the device hardware manufacturer.
+10. GET_DEVICE_MODEL - Get the specific device model name.
+11. GET_OS_VERSION - Check the Android OS version.
+12. GET_API_LEVEL - Get the Android API level.
+13. GET_UPTIME - Check how long the device has been running since the last reboot.
+14. GET_CURRENT_TIMEZONE - Get the device's configured timezone.
+15. GET_STORAGE_TOTAL - Get the total internal storage capacity.
+16. GET_STORAGE_AVAILABLE - Get the remaining available storage.
+17. GET_RAM_TOTAL - Check total physical memory on the device.
+18. GET_RAM_AVAILABLE - Check available free memory.
+19. GET_IP_ADDRESS_LOCAL - Retrieve the local IP address on the network.
+20. GET_MAC_ADDRESS - Retrieve the network adapter MAC address.
+21. GET_BLUETOOTH_STATUS - Check if Bluetooth is enabled.
+22. GET_NETWORK_TYPE - Check the active data connection (Wi-Fi, LTE, 5G, etc.).
+23. GET_SCREEN_BRIGHTNESS - Get current screen brightness value.
+24. GET_VOLUME_MEDIA - Get the current media playback volume.
+25. GET_VOLUME_RINGTONE - Get the current ringtone volume.
+26. GET_VOLUME_ALARM - Get the current alarm volume.
+27. GET_INSTALLED_APPS_COUNT - Count total installed third-party apps.
+28. GET_SYSTEM_APPS_COUNT - Count total system apps.
+29. GET_LANGUAGE - Retrieve the current system language setting.
+30. GET_FONT_SCALE - Check the system font scale setting.
+
+# System Diagnostics & Hardware
+31. GET_CPU_USAGE - Monitor current CPU utilization.
+32. GET_CPU_CORES - Get the number of CPU cores.
+33. GET_ACTIVE_SENSORS - List all available hardware sensors.
+34. PING_DEVICE - Check if the device is responsive to commands.
+35. GET_DEFAULT_BROWSER - Identify the default web browser app.
+36. GET_ACCESSIBILITY_STATUS - Check if Accessibility features are enabled.
+37. GET_SCREEN_TIMEOUT - Check the display auto-sleep duration.
+38. GET_DISPLAY_RESOLUTION - Get the screen width and height.
+39. GET_DISPLAY_DENSITY - Get the screen pixel density (DPI).
+40. GET_NFC_STATUS - Check if NFC is enabled.
+41. CHECK_VPN_STATUS - See if a VPN connection is currently active.
+42. GET_AVAILABLE_PROCESSORS - Return the number of processors available to the JVM.
+43. GET_SYSTEM_LOAD_AVERAGE - Get the system load average.
+44. GET_CURRENT_RUNNING_SERVICES - List active foreground services.
+45. CHECK_LOCATION_SERVICES_ENABLED - Verify if GPS is toggled on.
+46. CHECK_DND_STATUS - Check if Do Not Disturb mode is active.
+47. GET_NETWORK_OPERATOR_NAME - Retrieve the carrier/operator name.
+48. CHECK_ROAMING_STATUS - See if the device is currently roaming.
+49. GET_SIM_STATE - Check if a SIM card is present and ready.
+50. GET_DEFAULT_DIALER - Identify the default phone dialer app.
+
+# Display & UI Controls
+51. TOGGLE_FLASHLIGHT - Turn the device flashlight on or off.
+52. WAKE_SCREEN - Turn the display on.
+53. DIM_SCREEN - Set the screen brightness to its lowest level.
+54. MAX_BRIGHTNESS - Set screen brightness to maximum.
+55. SHOW_TOAST_MESSAGE - Display a brief popup text message on screen.
+56. SHOW_DIALOG_MESSAGE - Display an alert dialog with a message.
+57. OPEN_WEBPAGE - Launch a specific URL in the default browser.
+58. LAUNCH_APP - Open an application using its package name.
+59. PRESS_HOME_ACCESSIBILITY - Trigger the Home button action.
+60. PRESS_BACK_ACCESSIBILITY - Trigger the Back button action.
+61. PRESS_RECENTS_ACCESSIBILITY - Open the Recent Apps menu.
+62. SWIPE_UP_ACCESSIBILITY - Simulate a swipe up gesture.
+63. SWIPE_DOWN_ACCESSIBILITY - Simulate a swipe down gesture.
+64. SWIPE_LEFT_ACCESSIBILITY - Simulate a swipe left gesture.
+65. SWIPE_RIGHT_ACCESSIBILITY - Simulate a swipe right gesture.
+66. CHECK_DARK_MODE_STATUS - Check if the system is in dark theme.
+67. ENABLE_DARK_MODE - Switch system theme to dark (if supported).
+68. DISABLE_DARK_MODE - Switch system theme to light.
+69. TOGGLE_AUTO_ROTATE - Turn auto-rotate screen on or off.
+70. CHECK_AUTO_ROTATE_STATUS - Verify the auto-rotate setting.
+
+# Audio & Media Controls
+71. PLAY_SOUND_ALERT - Play a standard alert sound.
+72. STOP_SOUND_ALERT - Stop the currently playing alert sound.
+73. VIBRATE_DEVICE - Trigger the device haptic motor.
+74. MUTE_DEVICE - Set media volume to zero.
+75. MAX_VOLUME - Set media volume to 100%.
+76. SET_MEDIA_VOLUME - Adjust the media volume to a specific level.
+77. TEXT_TO_SPEECH_PLAY - Convert text to audio and play it aloud.
+78. SET_RINGTONE_VOLUME - Adjust the ringtone volume level.
+79. SET_ALARM_VOLUME - Adjust the alarm volume level.
+80. PLAY_SYSTEM_NOTIFICATION_SOUND - Play the default notification chime.
+81. GET_AVAILABLE_AUDIO_DEVICES - List connected audio outputs (e.g., Bluetooth headphones).
+82. GET_CONNECTED_BLUETOOTH_DEVICES - List actively paired Bluetooth accessories.
+83. START_ALARM_CLOCK - Launch the alarm clock app or set an alarm.
+84. STOP_ALARM_CLOCK - Dismiss an active alarm.
+85. SET_TIMER - Start a countdown timer.
+86. TEST_VIBRATOR - Run a diagnostic pattern on the vibrator.
+87. TEST_SPEAKER - Play a diagnostic tone on the speaker.
+88. TEST_MICROPHONE - Record a brief audio clip for diagnostic check.
+89. TEST_DISPLAY_COLORS - Cycle display colors for dead pixel check.
+90. SYNC_DEVICE_TIME - Prompt the device to sync its clock with the network.
+
+# Network & Connectivity Settings
+91. ENABLE_WIFI - Attempt to turn Wi-Fi on (may require permissions).
+92. DISABLE_WIFI - Attempt to turn Wi-Fi off.
+93. ENABLE_BLUETOOTH - Attempt to turn Bluetooth on.
+94. DISABLE_BLUETOOTH - Attempt to turn Bluetooth off.
+95. RECONNECT_WIFI - Disconnect and reconnect to the current network.
+96. TURN_ON_BATTERY_SAVER - Toggle Android battery saver mode on.
+97. TURN_OFF_BATTERY_SAVER - Toggle Android battery saver mode off.
+98. SET_SCREEN_TIMEOUT_30S - Set screen sleep timeout to 30 seconds.
+99. SET_SCREEN_TIMEOUT_1M - Set screen sleep timeout to 1 minute.
+100. SET_SCREEN_TIMEOUT_5M - Set screen sleep timeout to 5 minutes.
+101. REQUEST_LOCATION_UPDATE - Ping for the current location.
+102. REQUEST_HIGH_ACCURACY_LOCATION - Request location using GPS only.
+103. ENABLE_DO_NOT_DISTURB - Turn on DND mode (requires permission).
+104. DISABLE_DO_NOT_DISTURB - Turn off DND mode.
+105. SEND_PING_REQUEST - Check network latency to a specific server.
+106. EXECUTE_NETWORK_DIAGNOSTICS - Run a simple connection test.
+107. RESET_NETWORK_SETTINGS - Reset Wi-Fi and Bluetooth settings (MDM feature).
+
+# Advanced System Info & Developer Metrics
+108. CHECK_NFC_SUPPORT - Verify if the hardware has an NFC chip.
+109. CHECK_FINGERPRINT_SUPPORT - Verify if a fingerprint scanner is present.
+110. CHECK_CAMERA_RESOLUTION_FRONT - Get max resolution of the front camera.
+111. CHECK_CAMERA_RESOLUTION_REAR - Get max resolution of the main rear camera.
+112. GET_DEVICE_BUILD_ID - Read the system build ID string.
+113. GET_DEVICE_BOARD - Read the underlying board name.
+114. GET_DEVICE_BOOTLOADER - Read the bootloader version.
+115. GET_DEVICE_DISPLAY_ID - Read the display firmware ID.
+116. GET_DEVICE_FINGERPRINT - Read the unique device build fingerprint.
+117. GET_DEVICE_HARDWARE - Read the hardware identifier.
+118. GET_DEVICE_HOST - Read the build host machine name.
+119. GET_DEVICE_TAGS - Read the system build tags.
+120. GET_DEVICE_TIME - Get the current Unix timestamp from the device.
+121. GET_DEVICE_USER - Get the build user.
+122. GET_DEVICE_RADIO_VERSION - Get the baseband/radio firmware version.
+123. DUMP_BATTERY_STATS - Fetch detailed battery usage statistics.
+124. DUMP_NETWORK_STATS - Fetch data transfer metrics.
+125. DUMP_MEMINFO - Fetch detailed memory allocation info.
+126. DUMP_GFXINFO - Fetch graphics rendering performance data.
+127. CHECK_DEVELOPER_OPTIONS_ENABLED - Verify if developer mode is unlocked.
+128. CHECK_ADB_ENABLED - Check if USB debugging is turned on.
+129. CHECK_INSTALL_NON_MARKET_APPS - Check if sideloading APKs is permitted.
+
+# Settings Navigation & Utilities
+130. LAUNCH_SETTINGS - Open the main Android Settings app.
+131. LAUNCH_WIFI_SETTINGS - Open the Wi-Fi settings menu.
+132. LAUNCH_BLUETOOTH_SETTINGS - Open the Bluetooth settings menu.
+133. LAUNCH_DISPLAY_SETTINGS - Open the Display settings menu.
+134. LAUNCH_LOCATION_SETTINGS - Open the Location settings menu.
+135. LAUNCH_APP_SETTINGS - Open the App Management settings menu.
+136. CLEAR_APP_CACHE - Request to clear cache for a specific app.
+137. RESTART_APP - Force close and relaunch a specific app.
+138. LIST_DIRECTORY_DOWNLOADS - Check files in the public Downloads folder.
+139. CREATE_FOLDER_DOWNLOADS - Create a new directory in Downloads.
+140. DELETE_FILE_DOWNLOADS - Delete a file from the Downloads folder.
+141. RENAME_FILE_DOWNLOADS - Rename a file in the Downloads folder.
+142. LIST_BACKGROUND_PROCESSES - Get a count of active background processes.
+143. CHECK_STORAGE_ENCRYPTION_STATUS - Verify if the internal storage is encrypted.
+144. GET_KEYGUARD_SECURE_STATUS - Check if the lock screen requires a PIN/Password.
+145. CHECK_ACCELEROMETER_DATA - Read current X/Y/Z values from the accelerometer.
+146. CHECK_GYROSCOPE_DATA - Read current rotation values from the gyroscope.
+147. CHECK_MAGNETOMETER_DATA - Read current magnetic field values.
+148. CHECK_LIGHT_SENSOR_DATA - Read current ambient light sensor lux value.
+149. GET_DEFAULT_SMS_APP - Identify the default texting app.
+150. CHECK_SYSTEM_UPDATE_STATUS - Open the system update check screen.
