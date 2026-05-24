@@ -26,30 +26,29 @@ class ScreenReconstructionView @JvmOverloads constructor(
 
     private var elements: List<ScreenElement> = emptyList()
 
-    // Hardcoded expected device dimensions (we can estimate if we don't know it,
-    // but usually coordinates are in physical pixels, e.g. 1080x2400)
-    // We will dynamically calculate max bounds based on input if needed.
     private var maxRight = 1080
     private var maxBottom = 2400
 
-    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+    
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = Color.DKGRAY
-        strokeWidth = 2f
+        color = Color.parseColor("#CCCCCC")
+        strokeWidth = 1.5f
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
-        textSize = 30f // Will be scaled
-        textAlign = Paint.Align.CENTER
+
+    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#212121")
     }
 
     fun setElements(newElements: List<ScreenElement>) {
-        this.elements = newElements
+        // CRITICAL STEP: Sort by area size descending.
+        // This ensures massive layout containers (Scrollables) are drawn *first* in the background,
+        // and tiny text elements/buttons are drawn *on top* of them.
+        this.elements = newElements.sortedByDescending { it.bounds.width() * it.bounds.height() }
 
-        // Auto-detect max bounds to scale appropriately
         maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1080) ?: 1080
         maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(2400) ?: 2400
 
@@ -62,18 +61,16 @@ class ScreenReconstructionView @JvmOverloads constructor(
         if (elements.isEmpty()) {
             val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.GRAY
-                textSize = 50f
+                textSize = 40f
                 textAlign = Paint.Align.CENTER
             }
-            canvas.drawText("No screen data", width / 2f, height / 2f, emptyPaint)
+            canvas.drawText("No screen data loaded", width / 2f, height / 2f, emptyPaint)
             return
         }
 
-        // Calculate scaling factors so the reconstructed screen fits perfectly in the view
+        // Handle scaling aspect ratio cleanly
         val scaleX = width.toFloat() / maxRight.toFloat()
         val scaleY = height.toFloat() / maxBottom.toFloat()
-
-        // Maintain aspect ratio, center it if needed, or just fill. Let's maintain aspect ratio.
         val scale = minOf(scaleX, scaleY)
 
         val offsetX = (width - (maxRight * scale)) / 2f
@@ -83,68 +80,80 @@ class ScreenReconstructionView @JvmOverloads constructor(
         canvas.translate(offsetX, offsetY)
         canvas.scale(scale, scale)
 
-        // Draw background phone screen
-        val bgPaint = Paint().apply { color = Color.parseColor("#f0f0f0") }
-        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), bgPaint)
+        // Draw Device Canvas Background
+        fillPaint.color = Color.parseColor("#F5F5F7")
+        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), fillPaint)
 
-        // Draw outline of the screen
-        val screenOutlinePaint = Paint().apply {
-            color = Color.BLACK
-            style = Paint.Style.STROKE
-            strokeWidth = 5f
-        }
-        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), screenOutlinePaint)
-
-        // Draw elements back-to-front (though order in list usually top-to-bottom)
+        // Render each element safely
         for (el in elements) {
             val rectF = RectF(el.bounds)
+            
+            // Ignore completely collapsed elements
+            if (rectF.width() <= 0 || rectF.height() <= 0) continue
 
-            // Set color based on type
+            // 1. Assign professional, semi-translucent colors so nested objects show through
             when (el.type) {
-                "Button" -> boxPaint.color = Color.parseColor("#bbdefb") // Light blue
-                "Input" -> boxPaint.color = Color.parseColor("#fff9c4")  // Light yellow
-                "Scrollable" -> boxPaint.color = Color.parseColor("#f3e5f5") // Light purple
-                "Text" -> boxPaint.color = Color.WHITE
-                else -> boxPaint.color = Color.WHITE
+                "Scrollable" -> fillPaint.color = Color.parseColor("#F3E5F5") // Light elegant purple
+                "Button" -> fillPaint.color = Color.parseColor("#E3F2FD")     // Clean soft blue
+                "Input" -> fillPaint.color = Color.parseColor("#FFFDE7")      // Pastel yellow
+                "Text" -> fillPaint.color = Color.WHITE
+                else -> fillPaint.color = Color.parseColor("#FAFAFA")
             }
 
-            canvas.drawRect(rectF, boxPaint)
+            // Draw element body and its bounding border
+            canvas.drawRect(rectF, fillPaint)
             canvas.drawRect(rectF, borderPaint)
 
-            // Use TextPaint for StaticLayout
-            val textPaintForLayout = TextPaint(textPaint).apply {
-                // Adaptive text size
-                textSize = (rectF.height() * 0.4f).coerceIn(20f, 60f)
-            }
+            // 2. Handle text wrapping safely inside its specific bounding box
+            if (el.label.isNotBlank()) {
+                canvas.save()
+                // Add a small 4px padding inside the boundary box so text doesn't touch edges
+                val padding = 4f
+                val innerWidth = (rectF.width() - (padding * 2)).coerceAtLeast(10f)
+                val innerHeight = (rectF.height() - (padding * 2)).coerceAtLeast(10f)
 
-            // We need a width > 0 for StaticLayout
-            val layoutWidth = maxOf(rectF.width().toInt() - 8, 1)
+                canvas.clipRect(rectF) // Prevent any leaks outside its zone
+                canvas.translate(rectF.left + padding, rectF.top + padding)
 
-            val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                StaticLayout.Builder.obtain(el.label, 0, el.label.length, textPaintForLayout, layoutWidth)
-                    .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                    .setLineSpacing(0f, 1f)
-                    .setIncludePad(false)
-                    .build()
-            } else {
-                @Suppress("DEPRECATION")
-                StaticLayout(
-                    el.label, textPaintForLayout, layoutWidth,
-                    Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false
+                // Mathematically calculate a pleasant text size that scales with bounding box height
+                val computedTextSize = (rectF.height() * 0.35f).coerceIn(14f, 28f)
+                textPaint.textSize = computedTextSize
+
+                // Create a wrapping text engine layout
+                val alignment = if (el.type == "Button" || el.type == "Input") {
+                    Layout.Alignment.ALIGN_CENTER
+                } else {
+                    Layout.Alignment.ALIGN_NORMAL
+                }
+
+                val staticLayout = StaticLayout.Builder.obtain(
+                    el.label, 0, el.label.length, textPaint, innerWidth.toInt()
                 )
+                    .setAlignment(alignment)
+                    .setLineSpacing(0f, 1.0f)
+                    .setIncludePad(false)
+                    .setMaxLines((innerHeight / textPaint.fontSpacing).toInt().coerceAtLeast(1))
+                    .setEllipsize(android.text.TextUtils.TruncateAt.END) // Graceful truncate with "..."
+                    .build()
+
+                // Center vertical alignment inside smaller boxes
+                if (staticLayout.height < innerHeight) {
+                    val verticalOffset = (innerHeight - staticLayout.height) / 2f
+                    canvas.translate(0f, verticalOffset)
+                }
+
+                staticLayout.draw(canvas)
+                canvas.restore()
             }
-
-            // Center the layout vertically and horizontally
-            val layoutHeight = staticLayout.height
-            val dx = rectF.left + (rectF.width() - layoutWidth) / 2f
-            val dy = rectF.top + (rectF.height() - layoutHeight) / 2f
-
-            canvas.save()
-            canvas.clipRect(rectF) // Ensure it doesn't spill over
-            canvas.translate(dx, dy)
-            staticLayout.draw(canvas)
-            canvas.restore()
         }
+
+        // Draw crisp Device Boundary Edge
+        val outerFramePaint = Paint().apply {
+            color = Color.parseColor("#9E9E9E")
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        canvas.drawRect(0f, 0f, maxRight.toFloat(), maxBottom.toFloat(), outerFramePaint)
 
         canvas.restore()
     }
