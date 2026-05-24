@@ -6,6 +6,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
 
@@ -108,20 +111,38 @@ class ScreenReconstructionView @JvmOverloads constructor(
             canvas.drawRect(rectF, boxPaint)
             canvas.drawRect(rectF, borderPaint)
 
-            // Draw text centered in the rect
-            val cx = rectF.centerX()
-            var cy = rectF.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2)
-
-            // Adaptive text size based on box height (rough estimate)
-            val adaptiveTextPaint = Paint(textPaint).apply {
+            // Use TextPaint for StaticLayout
+            val textPaintForLayout = TextPaint(textPaint).apply {
+                // Adaptive text size
                 textSize = (rectF.height() * 0.4f).coerceIn(20f, 60f)
             }
-            cy = rectF.centerY() - ((adaptiveTextPaint.descent() + adaptiveTextPaint.ascent()) / 2)
 
-            // Clip text to bounds
+            // We need a width > 0 for StaticLayout
+            val layoutWidth = maxOf(rectF.width().toInt() - 8, 1)
+
+            val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                StaticLayout.Builder.obtain(el.label, 0, el.label.length, textPaintForLayout, layoutWidth)
+                    .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                    .setLineSpacing(0f, 1f)
+                    .setIncludePad(false)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                StaticLayout(
+                    el.label, textPaintForLayout, layoutWidth,
+                    Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false
+                )
+            }
+
+            // Center the layout vertically and horizontally
+            val layoutHeight = staticLayout.height
+            val dx = rectF.left + (rectF.width() - layoutWidth) / 2f
+            val dy = rectF.top + (rectF.height() - layoutHeight) / 2f
+
             canvas.save()
-            canvas.clipRect(rectF)
-            canvas.drawText(el.label, cx, cy, adaptiveTextPaint)
+            canvas.clipRect(rectF) // Ensure it doesn't spill over
+            canvas.translate(dx, dy)
+            staticLayout.draw(canvas)
             canvas.restore()
         }
 
