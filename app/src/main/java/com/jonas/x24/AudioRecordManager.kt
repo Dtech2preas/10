@@ -62,11 +62,12 @@ object AudioRecordManager {
         }
     }
 
-    fun stopRecording() {
-        val sessionKey = currentSessionKey ?: return
+    fun stopRecording(fallbackSessionKey: String? = null) {
+        val sessionKey = currentSessionKey ?: fallbackSessionKey ?: return
 
         if (recorder == null) {
             postResult(sessionKey, "ERROR", "Not currently recording")
+            cleanup() // Just in case state got corrupted
             return
         }
 
@@ -78,11 +79,16 @@ object AudioRecordManager {
             recorder?.release()
 
             outputFile?.let {
-                val bytes = it.readBytes()
-                val base64 = Base64.encodeToString(bytes, Base64.DEFAULT)
-                postResult(sessionKey, "AUDIO", base64)
+                if (it.exists()) {
+                    val bytes = it.readBytes()
+                    val base64 = Base64.encodeToString(bytes, Base64.DEFAULT)
+                    postResult(sessionKey, "AUDIO", base64)
+                } else {
+                    postResult(sessionKey, "ERROR", "Audio file not found")
+                }
             }
         } catch (e: Exception) {
+            Log.e("x24Audio", "Error stopping recording", e)
             postResult(sessionKey, "ERROR", "Failed to stop recording: ${e.message}")
         } finally {
             cleanup()

@@ -51,7 +51,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                         finish()
                     }
                     "STOP_RECORD_AUDIO" -> {
-                        AudioRecordManager.stopRecording()
+                        AudioRecordManager.stopRecording(sessionKey)
                         finish()
                     }
                     "SCREENSHOT_A11Y" -> takeA11yScreenshot()
@@ -93,7 +93,7 @@ class CommandReceiverActivity : AppCompatActivity() {
                         finish()
                     }
                     "STOP_RECORD_AUDIO" -> {
-                        AudioRecordManager.stopRecording()
+                        AudioRecordManager.stopRecording(sessionKey)
                         finish()
                     }
                 "SCREENSHOT_A11Y" -> takeA11yScreenshot()
@@ -171,15 +171,24 @@ class CommandReceiverActivity : AppCompatActivity() {
         val activeNotifs = x24NotificationService.instance?.getActiveNotificationsList() ?: emptyList()
         val recentNotifs = x24NotificationService.recentNotifications
 
-        val text = if (activeNotifs.isNotEmpty()) {
-            "Active Notifications:\n" + activeNotifs.joinToString("\n")
-        } else if (recentNotifs.isNotEmpty()) {
-            "No active notifications. Recent:\n" + recentNotifs.joinToString("\n")
+        val builder = java.lang.StringBuilder()
+
+        if (activeNotifs.isNotEmpty()) {
+            builder.append("Active Notifications:\n")
+            builder.append(activeNotifs.joinToString("\n"))
+            builder.append("\n\n")
         } else {
-            "No notifications found."
+            builder.append("No active notifications.\n\n")
         }
 
-        postResult("TEXT", text)
+        if (recentNotifs.isNotEmpty()) {
+            builder.append("Recent Notifications:\n")
+            builder.append(recentNotifs.joinToString("\n"))
+        } else {
+            builder.append("No recent notifications.")
+        }
+
+        postResult("TEXT", builder.toString().trim())
         finish()
     }
 
@@ -188,27 +197,44 @@ class CommandReceiverActivity : AppCompatActivity() {
     private fun takeA11yScreenshot() {
         val service = x24AccessibilityService.instance
         if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            service.takeScreenshot(windowManager.defaultDisplay.displayId, applicationContext.mainExecutor, object : android.accessibilityservice.AccessibilityService.TakeScreenshotCallback {
-                override fun onSuccess(screenshot: android.accessibilityservice.AccessibilityService.ScreenshotResult) {
-                    val bitmap = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
-                    if (bitmap != null) {
-                        // Hardware bitmaps need to be converted to software to compress
-                        val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-                        val outputStream = ByteArrayOutputStream()
-                        softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
-                        val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
-                        postResult("IMAGE", base64)
-                    } else {
-                        postResult("ERROR", "Failed to create bitmap from screenshot")
+            try {
+                service.takeScreenshot(windowManager.defaultDisplay.displayId, applicationContext.mainExecutor, object : android.accessibilityservice.AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: android.accessibilityservice.AccessibilityService.ScreenshotResult) {
+                        try {
+                            val bitmap = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
+                            if (bitmap != null) {
+                                // Hardware bitmaps need to be converted to software to compress
+                                val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                                val outputStream = ByteArrayOutputStream()
+                                softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
+                                val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
+                                postResult("IMAGE", base64)
+                            } else {
+                                postResult("ERROR", "Failed to create bitmap from screenshot")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("x24Command", "Error processing screenshot", e)
+                            postResult("ERROR", "Error processing screenshot: ${e.message}")
+                        } finally {
+                            try {
+                                screenshot.hardwareBuffer.close()
+                            } catch (e: Exception) {
+                                Log.e("x24Command", "Error closing hardware buffer", e)
+                            }
+                            finish()
+                        }
                     }
-                    finish()
-                }
 
-                override fun onFailure(errorCode: Int) {
-                    postResult("ERROR", "Accessibility Screenshot Failed: Code $errorCode")
-                    finish()
-                }
-            })
+                    override fun onFailure(errorCode: Int) {
+                        postResult("ERROR", "Accessibility Screenshot Failed: Code $errorCode")
+                        finish()
+                    }
+                })
+            } catch (e: Exception) {
+                Log.e("x24Command", "Error calling takeScreenshot", e)
+                postResult("ERROR", "Error calling takeScreenshot: ${e.message}")
+                finish()
+            }
         } else {
             postResult("ERROR", "Accessibility service running: ${service != null}, SDK: ${Build.VERSION.SDK_INT} (requires 30+)")
             finish()
