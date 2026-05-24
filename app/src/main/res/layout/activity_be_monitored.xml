@@ -16,9 +16,44 @@
         android:layout_marginBottom="32dp"/>
 
     <Button
+        android:id="@+id/btnRequestPermissions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="1. Grant Standard Permissions" />
+
+    <Button
+        android:id="@+id/btnOpenOverlaySettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="2. Allow Display Over Other Apps" />
+
+    <Button
+        android:id="@+id/btnOpenA11ySettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="3. Enable Accessibility Service" />
+
+    <Button
+        android:id="@+id/btnOpenNotificationSettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:text="4. Allow Notification Access" />
+
+    <Button
         android:id="@+id/btnStartService"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
         android:text="Start Monitoring Service" />
+
+    <Button
+        android:id="@+id/btnLogout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Disconnect / Logout" />
 
 </LinearLayout>

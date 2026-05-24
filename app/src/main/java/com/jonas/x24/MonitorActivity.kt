@@ -50,7 +50,24 @@ class MonitorActivity : AppCompatActivity() {
             sendCommand("RECORD_AUDIO")
         }
 
+        findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
+            sendCommand("GET_LOCATION")
+        }
+
+        findViewById<Button>(R.id.btnLogout).setOnClickListener {
+            logout()
+        }
+
         listenForResults()
+    }
+
+    private fun logout() {
+        val prefs = getSharedPreferences("x24_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+        val intent = android.content.Intent(this, MainActivity::class.java)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        startActivity(intent)
+        finish()
     }
 
     private fun sendCommand(command: String) {
