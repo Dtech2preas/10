@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvMonitorStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Monitor Dashboard"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btnScreenshotMP"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Take Screenshot (MediaProjection)" />
+
+    <Button
+        android:id="@+id/btnScreenshotA11y"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Take Screenshot (Accessibility)" />
+
+    <Button
+        android:id="@+id/btnReadNotifications"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Read Notifications" />
+
+    <Button
+        android:id="@+id/btnRecordAudio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Record Audio (10s)" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvResults"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Results will appear here..."
+                android:textIsSelectable="true"/>
+
+            <ImageView
+                android:id="@+id/ivScreenshot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:layout_marginTop="16dp"/>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

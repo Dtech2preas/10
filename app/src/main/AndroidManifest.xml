@@ -24,6 +24,8 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -82,18 +84,16 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".services.AutomationService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false" />
+        <activity android:name=".MonitorActivity" />
+        <activity android:name=".BeMonitoredActivity" />
+        <activity android:name=".CommandReceiverActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true" />
 
         <service
-            android:name=".services.OverlayService"
+            android:name=".services.FirebaseCommandService"
+            android:foregroundServiceType="specialUse|mediaProjection|microphone"
             android:exported="false" />
-        <activity
-            android:name=".LogActivity"
-            android:exported="false"
-            android:theme="@style/Theme.x24" />
 
     </application>
 
