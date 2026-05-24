@@ -15,12 +15,6 @@
         android:layout_marginBottom="16dp"/>
 
     <Button
-        android:id="@+id/btnScreenshotMP"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Take Screenshot (MediaProjection)" />
-
-    <Button
         android:id="@+id/btnScreenshotA11y"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,10 +27,22 @@
         android:text="Read Notifications" />
 
     <Button
-        android:id="@+id/btnRecordAudio"
+        android:id="@+id/btnReadScreen"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Record Audio (10s)" />
+        android:text="Read Screen Content" />
+
+    <Button
+        android:id="@+id/btnStartRecord"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Recording" />
+
+    <Button
+        android:id="@+id/btnStopRecord"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Stop Recording" />
 
     <Button
         android:id="@+id/btnGetLocation"

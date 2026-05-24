@@ -34,9 +34,7 @@ class MonitorActivity : AppCompatActivity() {
         tvResults = findViewById(R.id.tvResults)
         ivScreenshot = findViewById(R.id.ivScreenshot)
 
-        findViewById<Button>(R.id.btnScreenshotMP).setOnClickListener {
-            sendCommand("SCREENSHOT_MP")
-        }
+
 
         findViewById<Button>(R.id.btnScreenshotA11y).setOnClickListener {
             sendCommand("SCREENSHOT_A11Y")
@@ -46,8 +44,16 @@ class MonitorActivity : AppCompatActivity() {
             sendCommand("READ_NOTIFICATIONS")
         }
 
-        findViewById<Button>(R.id.btnRecordAudio).setOnClickListener {
-            sendCommand("RECORD_AUDIO")
+        findViewById<Button>(R.id.btnReadScreen).setOnClickListener {
+            sendCommand("READ_SCREEN")
+        }
+
+        findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
+            sendCommand("START_RECORD_AUDIO")
+        }
+
+        findViewById<Button>(R.id.btnStopRecord).setOnClickListener {
+            sendCommand("STOP_RECORD_AUDIO")
         }
 
         findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
