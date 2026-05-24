@@ -221,7 +221,7 @@ class x24AccessibilityService : AccessibilityService() {
             } ?: ""
 
             // Limit length to avoid blowing up context
-            if (label.length < 100) { // Increased length slightly to capture more context
+            if (label.length < 5000) { // Increased length to 5000 to capture long chat messages
                  builder.append("[$type] $label (bounds: ${bounds.left},${bounds.top},${bounds.right},${bounds.bottom})$viewId\n")
             }
         }
