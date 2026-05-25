@@ -7,33 +7,35 @@
     android:padding="32dp">
 
     <TextView
-        android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="x24 Setup"
-        android:textSize="32sp"
+        android:text="Admin Panel"
+        android:textSize="24sp"
         android:textStyle="bold"
         android:layout_marginBottom="32dp"/>
 
     <EditText
-        android:id="@+id/etSessionKey"
+        android:id="@+id/etMasterPassword"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter Session Key (Username)"
-        android:inputType="text"
+        android:hint="Master Password"
+        android:inputType="textPassword"
         android:layout_marginBottom="24dp"/>
 
     <Button
-        android:id="@+id/btnMonitor"
+        android:id="@+id/btnGenerateCode"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Monitor Mode"
+        android:text="Generate Access Code"
         android:layout_marginBottom="16dp"/>
 
-    <Button
-        android:id="@+id/btnBeMonitored"
+    <TextView
+        android:id="@+id/tvGeneratedCode"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Be Monitored Mode" />
+        android:textSize="18sp"
+        android:textAlignment="center"
+        android:textColor="@android:color/holo_green_dark"
+        android:textStyle="bold"/>
 
 </LinearLayout>
