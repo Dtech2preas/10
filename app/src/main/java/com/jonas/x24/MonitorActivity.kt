@@ -405,23 +405,31 @@ class MonitorActivity : AppCompatActivity() {
             val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
             val fileName = "x24_audio_${System.currentTimeMillis()}.3gp"
 
-            val resolver = applicationContext.contentResolver
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "audio/3gpp")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = applicationContext.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "audio/3gpp")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 }
-            }
 
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(audioBytes)
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(audioBytes)
+                    }
+                    Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Fallback for older versions
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).use { fos ->
+                    fos.write(audioBytes)
                 }
                 Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(this, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Error saving audio: ${e.message}", Toast.LENGTH_LONG).show()

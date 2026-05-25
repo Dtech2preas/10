@@ -341,7 +341,7 @@ class FirebaseCommandService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setSmallIcon(com.jonas.x24.R.drawable.ic_cloud)
             .setOngoing(true)
             .build()
     }

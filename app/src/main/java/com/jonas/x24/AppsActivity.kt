@@ -78,8 +78,7 @@ class AppsActivity : AppCompatActivity() {
                         val appsString = child.child("data").getValue(String::class.java) ?: ""
                         if (appsString.isNotEmpty()) {
                             appsList = appsString.split("\n").filter { it.isNotBlank() }
-                            val adapter = ArrayAdapter(this@AppsActivity, android.R.layout.simple_list_item_1, appsList)
-                            lvApps.adapter = adapter
+                            updateListView()
                         }
                     }
                 }
@@ -106,9 +105,27 @@ class AppsActivity : AppCompatActivity() {
                 } else {
                     tvWatchedApp.text = "Currently Watched Apps: None"
                 }
+
+                updateListView()
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+    }
+
+    private fun updateListView() {
+        if (appsList.isEmpty()) return
+
+        val displayList = appsList.map { appString ->
+            val packageName = appString.substringAfterLast("(").removeSuffix(")")
+            if (watchedApps.contains(packageName)) {
+                "✓ [WATCHED] $appString"
+            } else {
+                appString
+            }
+        }
+
+        val adapter = ArrayAdapter(this@AppsActivity, android.R.layout.simple_list_item_1, displayList)
+        lvApps.adapter = adapter
     }
 
     private fun confirmWatchApp(packageName: String) {
