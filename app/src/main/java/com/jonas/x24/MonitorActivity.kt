@@ -50,6 +50,7 @@ class MonitorActivity : AppCompatActivity() {
 
     private lateinit var tabLayout: TabLayout
     private lateinit var tabControls: ScrollView
+    private lateinit var tabFiles: LinearLayout
     private lateinit var tabScreen: FrameLayout
     private lateinit var tabMap: FrameLayout
     private lateinit var tabResults: ScrollView
@@ -57,6 +58,12 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var btnFullScreenToggle: Button
     private var isFullScreen = false
     private var lastAudioBase64: String? = null
+
+    // File Browser
+    private var currentDirectoryPath = "/sdcard"
+    private lateinit var tvCurrentPath: TextView
+    private lateinit var lvFiles: android.widget.ListView
+    private lateinit var pbFilesLoading: android.widget.ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,13 +94,19 @@ class MonitorActivity : AppCompatActivity() {
 
         tabLayout = findViewById(R.id.tabLayout)
         tabControls = findViewById(R.id.tabControls)
+        tabFiles = findViewById(R.id.tabFiles)
         tabScreen = findViewById(R.id.tabScreen)
         tabMap = findViewById(R.id.tabMap)
         tabResults = findViewById(R.id.tabResults)
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
 
+        tvCurrentPath = findViewById(R.id.tvCurrentPath)
+        lvFiles = findViewById(R.id.lvFiles)
+        pbFilesLoading = findViewById(R.id.pbFilesLoading)
+
         setupTabs()
+        setupFileBrowser()
 
         btnFullScreenToggle.setOnClickListener {
             toggleFullScreen()
@@ -146,6 +159,21 @@ class MonitorActivity : AppCompatActivity() {
             sendCommand("CAPTURE_PHOTO")
         }
 
+        findViewById<Button>(R.id.btnGetDeviceInfo)?.setOnClickListener {
+            sendCommand("GET_DEVICE_INFO")
+        }
+
+        findViewById<Button>(R.id.btnLaunchApp)?.setOnClickListener {
+            val et = findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etLaunchAppPackage)
+            val pkg = et.text.toString().trim()
+            if (pkg.isNotEmpty()) {
+                sendCommand("LAUNCH_APP:$pkg")
+                et.text?.clear()
+            } else {
+                Toast.makeText(this, "Enter a package name", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         findViewById<Button>(R.id.btnLogout).setOnClickListener {
             logout()
         }
@@ -165,6 +193,7 @@ class MonitorActivity : AppCompatActivity() {
 
     private fun setupTabs() {
         tabLayout.addTab(tabLayout.newTab().setText("Controls"))
+        tabLayout.addTab(tabLayout.newTab().setText("Files"))
         tabLayout.addTab(tabLayout.newTab().setText("Screen"))
         tabLayout.addTab(tabLayout.newTab().setText("Map"))
         tabLayout.addTab(tabLayout.newTab().setText("Logs"))
@@ -172,20 +201,58 @@ class MonitorActivity : AppCompatActivity() {
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 tabControls.visibility = View.GONE
+                tabFiles.visibility = View.GONE
                 tabScreen.visibility = View.GONE
                 tabMap.visibility = View.GONE
                 tabResults.visibility = View.GONE
 
                 when (tab?.position) {
                     0 -> tabControls.visibility = View.VISIBLE
-                    1 -> tabScreen.visibility = View.VISIBLE
-                    2 -> tabMap.visibility = View.VISIBLE
-                    3 -> tabResults.visibility = View.VISIBLE
+                    1 -> {
+                        tabFiles.visibility = View.VISIBLE
+                        // Load files if they haven't been loaded yet
+                        if (lvFiles.adapter == null) {
+                            sendCommand("LIST_FILES:$currentDirectoryPath")
+                            pbFilesLoading.visibility = View.VISIBLE
+                        }
+                    }
+                    2 -> tabScreen.visibility = View.VISIBLE
+                    3 -> tabMap.visibility = View.VISIBLE
+                    4 -> tabResults.visibility = View.VISIBLE
                 }
             }
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
+    }
+
+    private fun setupFileBrowser() {
+        findViewById<Button>(R.id.btnFileUp).setOnClickListener {
+            val parentFile = java.io.File(currentDirectoryPath).parentFile
+            if (parentFile != null) {
+                currentDirectoryPath = parentFile.absolutePath
+                tvCurrentPath.text = currentDirectoryPath
+                sendCommand("LIST_FILES:$currentDirectoryPath")
+                pbFilesLoading.visibility = View.VISIBLE
+                lvFiles.adapter = null
+            }
+        }
+
+        lvFiles.setOnItemClickListener { _, _, position, _ ->
+            val adapter = lvFiles.adapter as? FileAdapter
+            val item = adapter?.getItem(position)
+            if (item != null) {
+                val type = item["type"] as String
+                if (type == "FOLDER") {
+                    val newPath = item["path"] as String
+                    currentDirectoryPath = newPath
+                    tvCurrentPath.text = currentDirectoryPath
+                    sendCommand("LIST_FILES:$currentDirectoryPath")
+                    pbFilesLoading.visibility = View.VISIBLE
+                    lvFiles.adapter = null
+                }
+            }
+        }
     }
 
     private fun toggleFullScreen() {
@@ -295,6 +362,31 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         when (type) {
+            "FILE_LIST" -> {
+                try {
+                    val map = com.google.gson.Gson().fromJson(data, Map::class.java) as Map<String, Any>
+                    val path = map["currentPath"] as String
+                    val files = map["files"] as List<Map<String, Any>>
+
+                    currentDirectoryPath = path
+                    tvCurrentPath.text = currentDirectoryPath
+
+                    val adapter = FileAdapter(this@MonitorActivity, files) { filePath ->
+                        sendCommand("FETCH_PIC:$filePath")
+                        Toast.makeText(this@MonitorActivity, "Requesting picture...", Toast.LENGTH_SHORT).show()
+                    }
+                    lvFiles.adapter = adapter
+                    pbFilesLoading.visibility = View.GONE
+
+                    tv.text = "Listed files in $path"
+                    container.addView(tv)
+                } catch (e: Exception) {
+                    pbFilesLoading.visibility = View.GONE
+                    tv.text = "Failed to parse file list: ${e.message}"
+                    container.addView(tv)
+                    tabLayout.getTabAt(4)?.select() // Jump to Logs
+                }
+            }
             "TEXT" -> {
                 if (data.startsWith("Screen Context:")) {
                     tv.text = "Screen Read Received and Rendered in Screen Tab."
@@ -303,16 +395,16 @@ class MonitorActivity : AppCompatActivity() {
                     buildScreenReadUI(data) // Parse and pass to ScreenReconstructionView
 
                     // Switch to Screen tab if not already there
-                    tabLayout.getTabAt(1)?.select()
+                    tabLayout.getTabAt(2)?.select()
                 } else if (data.contains("Coords:")) {
                     tv.text = data
                     container.addView(tv)
                     parseLocationData(data, geoPoints)
-                    tabLayout.getTabAt(2)?.select() // Jump to Map
+                    tabLayout.getTabAt(3)?.select() // Jump to Map
                 } else {
                     tv.text = "Text Result:\n$data"
                     container.addView(tv)
-                    tabLayout.getTabAt(3)?.select() // Jump to Logs
+                    tabLayout.getTabAt(4)?.select() // Jump to Logs
                 }
             }
             "IMAGE" -> {
@@ -321,22 +413,30 @@ class MonitorActivity : AppCompatActivity() {
                 try {
                     val bytes = Base64.decode(data, Base64.DEFAULT)
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    val imageView = ImageView(this).apply {
-                        setImageBitmap(bitmap)
-                        adjustViewBounds = true
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 16, 0, 16)
+
+                    // Display image in results tab or the new dedicated image view if you added one
+                    val imageView = findViewById<ImageView>(R.id.ivFetchedImage)
+                    if (imageView != null) {
+                        imageView.setImageBitmap(bitmap)
+                        imageView.visibility = View.VISIBLE
+                    } else {
+                        val newImageView = ImageView(this).apply {
+                            setImageBitmap(bitmap)
+                            adjustViewBounds = true
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 16, 0, 16)
+                            }
                         }
+                        container.addView(newImageView)
                     }
-                    container.addView(imageView)
                 } catch (e: Exception) {
                     val errorTv = TextView(this).apply { text = "Failed to decode image." }
                     container.addView(errorTv)
                 }
-                tabLayout.getTabAt(3)?.select()
+                tabLayout.getTabAt(4)?.select()
             }
             "AUDIO" -> {
                 tv.text = "Audio received."
@@ -349,13 +449,13 @@ class MonitorActivity : AppCompatActivity() {
                     setOnClickListener { playAudioFromBase64(data) }
                 }
                 container.addView(btnPlay)
-                tabLayout.getTabAt(3)?.select() // Jump to Logs
+                tabLayout.getTabAt(4)?.select() // Jump to Logs
             }
             "ERROR" -> {
                 tv.text = "Error: $data"
                 tv.setTextColor(Color.RED)
                 container.addView(tv)
-                tabLayout.getTabAt(3)?.select() // Jump to Logs
+                tabLayout.getTabAt(4)?.select() // Jump to Logs
             }
         }
 

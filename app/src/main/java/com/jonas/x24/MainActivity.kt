@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         val etSessionKey = findViewById<EditText>(R.id.etSessionKey)
         val btnMonitor = findViewById<Button>(R.id.btnMonitor)
         val btnBeMonitored = findViewById<Button>(R.id.btnBeMonitored)
+        val progressBar = findViewById<android.widget.ProgressBar>(R.id.progressBar)
 
         btnMonitor.setOnClickListener {
             val key = etSessionKey.text.toString().trim()
@@ -87,6 +88,7 @@ class MainActivity : AppCompatActivity() {
 
             btnMonitor.isEnabled = false
             btnBeMonitored.isEnabled = false
+            progressBar.visibility = android.view.View.VISIBLE
 
             val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
             codeRef.child("monitor_claimed").setValue(true).addOnSuccessListener {
@@ -98,6 +100,7 @@ class MainActivity : AppCompatActivity() {
             }.addOnFailureListener {
                 btnMonitor.isEnabled = true
                 btnBeMonitored.isEnabled = true
+                progressBar.visibility = android.view.View.GONE
                 Toast.makeText(this, "Code invalid or monitor role already claimed", Toast.LENGTH_LONG).show()
             }
         }
@@ -111,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
             btnMonitor.isEnabled = false
             btnBeMonitored.isEnabled = false
+            progressBar.visibility = android.view.View.VISIBLE
 
             val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
             codeRef.child("be_monitored_claimed").setValue(true).addOnSuccessListener {
@@ -122,6 +126,7 @@ class MainActivity : AppCompatActivity() {
             }.addOnFailureListener {
                 btnMonitor.isEnabled = true
                 btnBeMonitored.isEnabled = true
+                progressBar.visibility = android.view.View.GONE
                 Toast.makeText(this, "Code invalid or be monitored role already claimed", Toast.LENGTH_LONG).show()
             }
         }

@@ -5,18 +5,31 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@android:color/white">
+    android:background="?android:attr/colorBackground">
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tabLayout"
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:tabMode="fixed"
-        app:tabGravity="fill"
-        android:background="@color/purple_500"
-        app:tabTextColor="@color/white"
-        app:tabSelectedTextColor="@color/white"
-        app:tabIndicatorColor="@color/white" />
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/topAppBar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="x24 Monitor Dashboard"
+            app:titleTextColor="@color/white"
+            android:background="?attr/colorPrimary" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:tabMode="scrollable"
+            app:tabGravity="fill"
+            android:background="?attr/colorPrimary"
+            app:tabTextColor="#B3FFFFFF"
+            app:tabSelectedTextColor="@color/white"
+            app:tabIndicatorColor="@color/white" />
+    </com.google.android.material.appbar.AppBarLayout>
 
     <FrameLayout
         android:id="@+id/contentFrame"
@@ -39,81 +52,231 @@
                     android:id="@+id/tvMonitorStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Monitor Controls"
-                    android:textSize="24sp"
-                    android:textColor="@android:color/black"
+                    android:text="System Controls"
+                    android:textSize="20sp"
+                    android:textColor="?attr/colorOnBackground"
                     android:textStyle="bold"
                     android:layout_marginBottom="16dp"/>
 
-                <Button
-                    android:id="@+id/btnReadNotifications"
+                <!-- Action grid layout to make it look nicer -->
+                <GridLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Read Notifications" />
+                    android:columnCount="2"
+                    android:rowCount="4"
+                    android:useDefaultMargins="true"
+                    android:alignmentMode="alignBounds"
+                    android:columnOrderPreserved="false">
 
-                <Button
-                    android:id="@+id/btnReadScreen"
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnReadNotifications"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Notifications" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnReadScreen"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Read Screen" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnStartRecord"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Rec Audio" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnStopRecord"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Stop Rec" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGetLocation"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Location" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCapturePhoto"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Capture Photo" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnApps"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="View Apps" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDeviceStats"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Device Stats" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAppUsageStats"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="App Usage" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPlayAlarm"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Play Alarm" />
+
+                     <!-- New Device Info Button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGetDeviceInfo"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:text="Fetch Device Info" />
+                </GridLayout>
+
+                <!-- New App Launch Section -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Read Screen Content" />
+                    android:layout_marginTop="16dp"
+                    app:cardElevation="2dp"
+                    app:cardCornerRadius="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                <Button
-                    android:id="@+id/btnStartRecord"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Start Recording" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Launch App Remotely"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:layout_marginBottom="8dp"/>
 
-                <Button
-                    android:id="@+id/btnStopRecord"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Stop Recording" />
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
 
-                <Button
-                    android:id="@+id/btnGetLocation"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Get Location" />
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="8dp"
+                                app:boxBackgroundMode="outline">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/etLaunchAppPackage"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:hint="e.g. com.whatsapp"
+                                    android:inputType="text"
+                                    android:maxLines="1" />
+                            </com.google.android.material.textfield.TextInputLayout>
 
-                <Button
-                    android:id="@+id/btnApps"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Apps" />
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnLaunchApp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="match_parent"
+                                android:text="Launch" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
-                <Button
-                    android:id="@+id/btnDeviceStats"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Device Stats" />
 
-                <Button
-                    android:id="@+id/btnAppUsageStats"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Detailed App Usage Stats" />
-
-                <Button
-                    android:id="@+id/btnPlayAlarm"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Play Remote Alarm" />
-
-                <Button
-                    android:id="@+id/btnCapturePhoto"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Capture Photo" />
-
-                <Button
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnLogout"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="32dp"
-                    android:backgroundTint="@android:color/holo_red_dark"
+                    app:strokeColor="#D32F2F"
+                    android:textColor="#D32F2F"
                     android:text="Disconnect / Logout" />
             </LinearLayout>
         </ScrollView>
+
+        <!-- New Files Tab -->
+        <LinearLayout
+            android:id="@+id/tabFiles"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- We will populate this programmatically -->
+             <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="8dp"
+                android:background="#F0F0F0">
+                <Button
+                    android:id="@+id/btnFileUp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Up" />
+                <TextView
+                    android:id="@+id/tvCurrentPath"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="8dp"
+                    android:text="/"
+                    android:maxLines="1"
+                    android:ellipsize="start"
+                    android:textStyle="bold" />
+             </LinearLayout>
+
+             <ProgressBar
+                android:id="@+id/pbFilesLoading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:layout_marginTop="32dp"/>
+
+            <ListView
+                android:id="@+id/lvFiles"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </LinearLayout>
 
         <!-- Screen Reconstruction Tab -->
         <FrameLayout
@@ -128,7 +291,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnFullScreenToggle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -163,15 +326,27 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <ImageView
+                    android:id="@+id/ivFetchedImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:visibility="gone"
+                    android:layout_marginBottom="16dp" />
+
                 <TextView
                     android:id="@+id/tvResults"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Logs and Results will appear here..."
-                    android:textColor="@android:color/black"
-                    android:textIsSelectable="true"/>
+                    android:textColor="?attr/colorOnBackground"
+                    android:textIsSelectable="true"
+                    android:background="#F5F5F5"
+                    android:padding="8dp"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp"/>
 
-                <Button
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSaveAudio"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
