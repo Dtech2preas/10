@@ -88,6 +88,24 @@
                     android:text="Device Stats" />
 
                 <Button
+                    android:id="@+id/btnAppUsageStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Detailed App Usage Stats" />
+
+                <Button
+                    android:id="@+id/btnPlayAlarm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Play Remote Alarm" />
+
+                <Button
+                    android:id="@+id/btnCapturePhoto"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Capture Photo" />
+
+                <Button
                     android:id="@+id/btnLogout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

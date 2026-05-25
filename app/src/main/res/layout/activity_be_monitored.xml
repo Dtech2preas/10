@@ -40,8 +40,15 @@
         android:id="@+id/btnOpenNotificationSettings"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="32dp"
+        android:layout_marginBottom="16dp"
         android:text="4. Allow Notification Access" />
+
+        <Button
+            android:id="@+id/btnOpenUsageAccessSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp"
+            android:text="5. Allow App Usage Access" />
 
     <Button
         android:id="@+id/btnStartService"
