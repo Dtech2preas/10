@@ -3,12 +3,26 @@ package com.jonas.x24
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
+
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var isPressing = false
+    private val longPressRunnable = Runnable {
+        if (isPressing) {
+            val intent = Intent(this, AdminActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -43,6 +57,23 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
 
+        val tvTitle = findViewById<TextView>(R.id.tvTitle)
+        tvTitle.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    isPressing = true
+                    longPressHandler.postDelayed(longPressRunnable, 10000)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isPressing = false
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                    true
+                }
+                else -> false
+            }
+        }
+
         val etSessionKey = findViewById<EditText>(R.id.etSessionKey)
         val btnMonitor = findViewById<Button>(R.id.btnMonitor)
         val btnBeMonitored = findViewById<Button>(R.id.btnBeMonitored)
@@ -50,27 +81,49 @@ class MainActivity : AppCompatActivity() {
         btnMonitor.setOnClickListener {
             val key = etSessionKey.text.toString().trim()
             if (key.isEmpty()) {
-                Toast.makeText(this, "Enter a session key", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Enter an access code", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            prefs.edit().putString("ROLE", "MONITOR").putString("SESSION_KEY", key).apply()
-            val intent = Intent(this, MonitorActivity::class.java)
-            intent.putExtra("SESSION_KEY", key)
-            startActivity(intent)
-            finish()
+
+            btnMonitor.isEnabled = false
+            btnBeMonitored.isEnabled = false
+
+            val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
+            codeRef.child("monitor_claimed").setValue(true).addOnSuccessListener {
+                prefs.edit().putString("ROLE", "MONITOR").putString("SESSION_KEY", key).apply()
+                val intent = Intent(this, MonitorActivity::class.java)
+                intent.putExtra("SESSION_KEY", key)
+                startActivity(intent)
+                finish()
+            }.addOnFailureListener {
+                btnMonitor.isEnabled = true
+                btnBeMonitored.isEnabled = true
+                Toast.makeText(this, "Code invalid or monitor role already claimed", Toast.LENGTH_LONG).show()
+            }
         }
 
         btnBeMonitored.setOnClickListener {
             val key = etSessionKey.text.toString().trim()
             if (key.isEmpty()) {
-                Toast.makeText(this, "Enter a session key", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Enter an access code", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
-            val intent = Intent(this, BeMonitoredActivity::class.java)
-            intent.putExtra("SESSION_KEY", key)
-            startActivity(intent)
-            finish()
+
+            btnMonitor.isEnabled = false
+            btnBeMonitored.isEnabled = false
+
+            val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
+            codeRef.child("be_monitored_claimed").setValue(true).addOnSuccessListener {
+                prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
+                val intent = Intent(this, BeMonitoredActivity::class.java)
+                intent.putExtra("SESSION_KEY", key)
+                startActivity(intent)
+                finish()
+            }.addOnFailureListener {
+                btnMonitor.isEnabled = true
+                btnBeMonitored.isEnabled = true
+                Toast.makeText(this, "Code invalid or be monitored role already claimed", Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

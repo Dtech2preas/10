@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "access_codes": {
+      "$code": {
+        ".read": false,
+        ".write": "(!data.exists() && newData.child('secret').val() == 'D-TECH_services') || (data.exists() && newData.child('secret').val() == data.child('secret').val())",
+        "secret": {
+          ".validate": "newData.val() == 'D-TECH_services'"
+        },
+        "monitor_claimed": {
+          ".validate": "newData.isBoolean() && (!data.exists() || data.val() == false)"
+        },
+        "be_monitored_claimed": {
+          ".validate": "newData.isBoolean() && (!data.exists() || data.val() == false)"
+        }
+      }
+    },
+    "sessions": {
+      "$code": {
+        ".read": "root.child('access_codes').child($code).exists()",
+        ".write": "root.child('access_codes').child($code).exists()"
+      }
+    }
+  }
+}

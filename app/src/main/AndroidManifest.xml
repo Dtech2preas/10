@@ -103,6 +103,7 @@
             </intent-filter>
         </service>
 
+        <activity android:name=".AdminActivity" />
         <activity android:name=".MonitorActivity" />
         <activity android:name=".BeMonitoredActivity" />
         <activity android:name=".AppsActivity" />
