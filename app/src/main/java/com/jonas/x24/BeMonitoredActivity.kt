@@ -27,7 +27,8 @@ class BeMonitoredActivity : AppCompatActivity() {
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.READ_CALL_LOG
+                Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.CAMERA
             )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -54,6 +55,12 @@ class BeMonitoredActivity : AppCompatActivity() {
             val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
             startActivity(intent)
             Toast.makeText(this, "Allow notification access for 'x24'", Toast.LENGTH_LONG).show()
+        }
+
+        findViewById<Button>(R.id.btnOpenUsageAccessSettings).setOnClickListener {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "Allow usage access for 'x24'", Toast.LENGTH_LONG).show()
         }
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener {

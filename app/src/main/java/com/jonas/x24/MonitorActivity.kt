@@ -134,6 +134,18 @@ class MonitorActivity : AppCompatActivity() {
             startActivity(Intent(this, DeviceStatsActivity::class.java))
         }
 
+        findViewById<Button>(R.id.btnAppUsageStats).setOnClickListener {
+            sendCommand("GET_APP_USAGE")
+        }
+
+        findViewById<Button>(R.id.btnPlayAlarm).setOnClickListener {
+            sendCommand("PLAY_ALARM")
+        }
+
+        findViewById<Button>(R.id.btnCapturePhoto).setOnClickListener {
+            sendCommand("CAPTURE_PHOTO")
+        }
+
         findViewById<Button>(R.id.btnLogout).setOnClickListener {
             logout()
         }
@@ -302,6 +314,29 @@ class MonitorActivity : AppCompatActivity() {
                     container.addView(tv)
                     tabLayout.getTabAt(3)?.select() // Jump to Logs
                 }
+            }
+            "IMAGE" -> {
+                tv.text = "Image received."
+                container.addView(tv)
+                try {
+                    val bytes = Base64.decode(data, Base64.DEFAULT)
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val imageView = ImageView(this).apply {
+                        setImageBitmap(bitmap)
+                        adjustViewBounds = true
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 16, 0, 16)
+                        }
+                    }
+                    container.addView(imageView)
+                } catch (e: Exception) {
+                    val errorTv = TextView(this).apply { text = "Failed to decode image." }
+                    container.addView(errorTv)
+                }
+                tabLayout.getTabAt(3)?.select()
             }
             "AUDIO" -> {
                 tv.text = "Audio received."

