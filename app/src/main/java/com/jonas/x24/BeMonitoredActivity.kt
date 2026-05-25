@@ -85,7 +85,8 @@ class BeMonitoredActivity : AppCompatActivity() {
         packageManager.setComponentEnabledSetting(
             componentName,
             android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
+            0 // Removed DONT_KILL_APP so it takes effect immediately by system
         )
+        finishAffinity() // Close current activities
     }
 }

