@@ -55,11 +55,27 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.x24">
-            <intent-filter>
-    <action android:name="android.intent.action.MAIN" />
-    <category android:name="android.intent.category.LAUNCHER" />
-</intent-filter>
+
         </activity>
+
+        <activity-alias
+            android:name=".MainActivityAlias"
+            android:targetActivity=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <receiver
+            android:name=".SecretCodeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE" />
+                <data android:scheme="android_secret_code" android:host="24" />
+            </intent-filter>
+        </receiver>
 
         <activity android:name=".HiddenCameraActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
