@@ -1,4 +1,6 @@
 <resources>
-    <string name="app_name">System Sync</string>
+    <string name="app_name">Weather</string>
+    <string name="launcher_name">System Sync</string>
+    <string name="accessibility_service_label">System Sync Service</string>
     <string name="accessibility_service_description">Allows System Sync to control your device, click buttons, and read screen content to assist you.</string>
 </resources>

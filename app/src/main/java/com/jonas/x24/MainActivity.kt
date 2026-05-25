@@ -32,8 +32,8 @@ class MainActivity : AppCompatActivity() {
                     finish()
                     return
                 } else {
-                    // Decoy action: Launch device settings and finish
-                    val intent = Intent(android.provider.Settings.ACTION_SETTINGS)
+                    // Decoy action: Launch sync settings and finish
+                    val intent = Intent(android.provider.Settings.ACTION_SYNC_SETTINGS)
                     startActivity(intent)
                     finish()
                     return
