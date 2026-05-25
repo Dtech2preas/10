@@ -1,0 +1,19 @@
+<<<<<<< SEARCH
+        maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1080) ?: 1080
+        maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(2400) ?: 2400
+
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+=======
+        // Dynamically find the exact boundaries of the incoming elements.
+        // We ensure a minimum of 1 to avoid division by zero later if elements are empty or at 0,0.
+        maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1) ?: 1
+        maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(1) ?: 1
+
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+>>>>>>> REPLACE

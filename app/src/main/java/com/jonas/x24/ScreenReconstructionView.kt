@@ -49,8 +49,9 @@ class ScreenReconstructionView @JvmOverloads constructor(
         // and tiny text elements/buttons are drawn *on top* of them.
         this.elements = newElements.sortedByDescending { it.bounds.width() * it.bounds.height() }
 
-        maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1080) ?: 1080
-        maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(2400) ?: 2400
+        // Find the actual boundaries to scale perfectly to the device screen content, avoiding empty space
+        maxRight = newElements.maxOfOrNull { it.bounds.right }?.coerceAtLeast(1) ?: 1
+        maxBottom = newElements.maxOfOrNull { it.bounds.bottom }?.coerceAtLeast(1) ?: 1
 
         invalidate()
     }

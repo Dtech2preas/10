@@ -14,7 +14,6 @@ import com.google.firebase.database.ValueEventListener
 class DeviceStatsActivity : AppCompatActivity() {
 
     private lateinit var btnRefreshStats: Button
-    private lateinit var btnRecentCalls: Button
     private lateinit var tvStatsContent: TextView
 
     private lateinit var sessionKey: String
@@ -28,15 +27,10 @@ class DeviceStatsActivity : AppCompatActivity() {
         sessionKey = prefs.getString("SESSION_KEY", "") ?: ""
 
         btnRefreshStats = findViewById(R.id.btnRefreshStats)
-        btnRecentCalls = findViewById(R.id.btnRecentCalls)
         tvStatsContent = findViewById(R.id.tvStatsContent)
 
         btnRefreshStats.setOnClickListener {
             sendCommand("GET_DEVICE_STATS")
-        }
-
-        btnRecentCalls.setOnClickListener {
-            sendCommand("GET_RECENT_CALLS")
         }
 
         listenForResults()
@@ -62,7 +56,7 @@ class DeviceStatsActivity : AppCompatActivity() {
                 // To display the latest matching result correctly, we iterate through children
                 for (child in snapshot.children) {
                     val command = child.child("command").getValue(String::class.java)
-                    if (command == "GET_DEVICE_STATS" || command == "GET_RECENT_CALLS") {
+                    if (command == "GET_DEVICE_STATS") {
                         val data = child.child("data").getValue(String::class.java) ?: "No data"
                         tvStatsContent.text = "Result for $command:\n\n$data"
                     }
