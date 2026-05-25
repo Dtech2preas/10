@@ -68,17 +68,12 @@ class ScreenReconstructionView @JvmOverloads constructor(
             return
         }
 
-        // Handle scaling aspect ratio cleanly
+        // Handle scaling to strictly fill the view's dimensions
         val scaleX = width.toFloat() / maxRight.toFloat()
         val scaleY = height.toFloat() / maxBottom.toFloat()
-        val scale = minOf(scaleX, scaleY)
-
-        val offsetX = (width - (maxRight * scale)) / 2f
-        val offsetY = (height - (maxBottom * scale)) / 2f
 
         canvas.save()
-        canvas.translate(offsetX, offsetY)
-        canvas.scale(scale, scale)
+        canvas.scale(scaleX, scaleY)
 
         // Draw Device Canvas Background
         fillPaint.color = Color.parseColor("#F5F5F7")

@@ -21,12 +21,6 @@
         android:layout_height="wrap_content"
         android:text="Refresh Stats" />
 
-    <Button
-        android:id="@+id/btnRecentCalls"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Get Recent Calls" />
-
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
