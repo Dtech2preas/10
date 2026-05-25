@@ -24,6 +24,7 @@ class AppsActivity : AppCompatActivity() {
     private val database = FirebaseDatabase.getInstance()
 
     private var appsList: List<String> = listOf()
+    private var watchedApps: MutableList<String> = mutableListOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +43,12 @@ class AppsActivity : AppCompatActivity() {
 
         lvApps.setOnItemClickListener { _, _, position, _ ->
             val selectedApp = appsList[position]
-            confirmWatchApp(selectedApp)
+            val packageName = selectedApp.substringAfterLast("(").removeSuffix(")")
+            if (watchedApps.contains(packageName)) {
+                confirmUnwatchApp(packageName)
+            } else {
+                confirmWatchApp(packageName)
+            }
         }
 
         listenForAppsResult()
@@ -84,36 +90,61 @@ class AppsActivity : AppCompatActivity() {
 
     private fun listenForWatchedApp() {
         if (sessionKey.isEmpty()) return
-        val stateRef = database.getReference("sessions").child(sessionKey).child("state").child("watchedApp")
+        val stateRef = database.getReference("sessions").child(sessionKey).child("state").child("watchedApps")
         stateRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val watchedApp = snapshot.getValue(String::class.java)
-                if (watchedApp != null && watchedApp.isNotEmpty()) {
-                    tvWatchedApp.text = "Currently Watched App: $watchedApp"
+                watchedApps.clear()
+                for (child in snapshot.children) {
+                    val app = child.getValue(String::class.java)
+                    if (app != null) {
+                        watchedApps.add(app)
+                    }
+                }
+
+                if (watchedApps.isNotEmpty()) {
+                    tvWatchedApp.text = "Currently Watched Apps: \n" + watchedApps.joinToString("\n")
                 } else {
-                    tvWatchedApp.text = "Currently Watched App: None"
+                    tvWatchedApp.text = "Currently Watched Apps: None"
                 }
             }
             override fun onCancelled(error: DatabaseError) {}
         })
     }
 
-    private fun confirmWatchApp(appInfo: String) {
-        val packageName = appInfo.substringAfterLast("(").removeSuffix(")")
+    private fun confirmWatchApp(packageName: String) {
         AlertDialog.Builder(this)
             .setTitle("Watch App")
             .setMessage("Do you want to receive alerts when '$packageName' is opened?")
             .setPositiveButton("Yes") { _, _ ->
-                setWatchedApp(packageName)
+                setWatchedApp(packageName, true)
             }
             .setNegativeButton("No", null)
             .show()
     }
 
-    private fun setWatchedApp(packageName: String) {
+    private fun confirmUnwatchApp(packageName: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Unwatch App")
+            .setMessage("Do you want to stop receiving alerts when '$packageName' is opened?")
+            .setPositiveButton("Yes") { _, _ ->
+                setWatchedApp(packageName, false)
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    private fun setWatchedApp(packageName: String, isWatching: Boolean) {
         if (sessionKey.isEmpty()) return
+
+        if (isWatching && !watchedApps.contains(packageName)) {
+            watchedApps.add(packageName)
+            Toast.makeText(this, "Watching: $packageName", Toast.LENGTH_SHORT).show()
+        } else if (!isWatching) {
+            watchedApps.remove(packageName)
+            Toast.makeText(this, "Stopped watching: $packageName", Toast.LENGTH_SHORT).show()
+        }
+
         // We set the state directly in Firebase for both devices to see
-        database.getReference("sessions").child(sessionKey).child("state").child("watchedApp").setValue(packageName)
-        Toast.makeText(this, "Watching: $packageName", Toast.LENGTH_SHORT).show()
+        database.getReference("sessions").child(sessionKey).child("state").child("watchedApps").setValue(watchedApps)
     }
 }

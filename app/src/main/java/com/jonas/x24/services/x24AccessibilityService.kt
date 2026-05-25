@@ -19,7 +19,7 @@ class x24AccessibilityService : AccessibilityService() {
         var instance: x24AccessibilityService? = null
     }
 
-    private var watchedApp: String? = null
+    private var watchedApps: List<String> = listOf()
     private var sessionKey: String? = null
     private var isListeningToFirebase = false
 
@@ -36,25 +36,42 @@ class x24AccessibilityService : AccessibilityService() {
     private fun setupFirebaseListener() {
         if (sessionKey == null || isListeningToFirebase) return
         isListeningToFirebase = true
-        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state").child("watchedApp")
+        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state").child("watchedApps")
         stateRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                watchedApp = snapshot.getValue(String::class.java)
+                val list = mutableListOf<String>()
+                for (child in snapshot.children) {
+                    val app = child.getValue(String::class.java)
+                    if (app != null) {
+                        list.add(app)
+                    }
+                }
+                watchedApps = list
             }
             override fun onCancelled(error: DatabaseError) {}
         })
     }
 
+    private val lastAlertTime = mutableMapOf<String, Long>()
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString()
-            if (packageName != null && packageName == watchedApp && sessionKey != null) {
-                val alertsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("alerts")
-                val alertData = mapOf(
-                    "latestAlert" to "Watched App Opened: $packageName",
-                    "timestamp" to System.currentTimeMillis()
-                )
-                alertsRef.setValue(alertData)
+            if (packageName != null && watchedApps.contains(packageName) && sessionKey != null) {
+                val currentTime = System.currentTimeMillis()
+                val lastAlert = lastAlertTime[packageName] ?: 0L
+
+                // Only alert once every 5 minutes (300,000 ms) per app
+                if (currentTime - lastAlert > 5 * 60 * 1000) {
+                    lastAlertTime[packageName] = currentTime
+
+                    val alertsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("alerts")
+                    val alertData = mapOf(
+                        "latestAlert" to "Watched App Opened: $packageName",
+                        "timestamp" to currentTime
+                    )
+                    alertsRef.setValue(alertData)
+                }
             }
         }
     }
