@@ -282,36 +282,34 @@ class FirebaseCommandService : Service() {
         postResult("TEXT", builder.toString().trim())
     }
 
-    private fun createNotification(): Notification {
-    val channelId = "x24_monitor_channel"
+    private fun createNotification(): android.app.Notification {
+        val channelId = "x24_monitor_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Monitor Service",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(
-            channelId,
-            "System Service",
-            NotificationManager.IMPORTANCE_MIN // 🔥 lowest visibility
-        )
-        channel.setSound(null, null)
-        channel.enableVibration(false)
-        channel.lockscreenVisibility = Notification.VISIBILITY_SECRET
-
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(channel)
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("x24 Active")
+            .setContentText("Monitoring for commands...")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setOngoing(true)
+            .build()
     }
 
-    // 🔥 Fake / placeholder weather (we'll make dynamic later)
-    val city = "Gqeberha"
-    val temp = "22°C"
-    val condition = "Partly Cloudy"
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
+    }
 
-    return NotificationCompat.Builder(this, channelId)
-        .setContentTitle("$city • $temp")
-        .setContentText(condition)
-        .setSmallIcon(android.R.drawable.ic_menu_compass) // better generic icon
-        .setPriority(NotificationCompat.PRIORITY_MIN)
-        .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        .setOngoing(true)
-        .setSilent(true)
-        .setShowWhen(false)
-        .build()
+    override fun onDestroy() {
+        super.onDestroy()
+        if (listener != null && ::database.isInitialized) {
+            database.removeEventListener(listener!!)
+        }
+    }
 }
