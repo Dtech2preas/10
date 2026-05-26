@@ -80,7 +80,7 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var btnRedeemPromo: Button
 
     // Unity Ads
-    private val unityGameId = "800001312" // Live Game ID
+    private val unityGameId = "acaf908a-4db1-4ee1-9509-9f44f2dcb2a0" // Live Game ID
     private val testMode = false
     private val adUnitId = "Rewarded_Android" // Default test rewarded ad unit
 
