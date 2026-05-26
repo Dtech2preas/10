@@ -1,39 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:padding="32dp">
+    android:padding="32dp"
+    android:background="?android:attr/colorBackground">
 
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="x24 Setup"
-        android:textSize="32sp"
+        android:textSize="36sp"
         android:textStyle="bold"
-        android:layout_marginBottom="32dp"/>
+        android:textColor="?attr/colorPrimary"
+        android:layout_marginBottom="48dp"/>
 
-    <EditText
-        android:id="@+id/etSessionKey"
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter Session Key (Username)"
-        android:inputType="text"
-        android:layout_marginBottom="24dp"/>
+        android:layout_marginBottom="32dp"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusTopStart="8dp"
+        app:boxCornerRadiusTopEnd="8dp"
+        app:boxCornerRadiusBottomStart="8dp"
+        app:boxCornerRadiusBottomEnd="8dp">
 
-    <Button
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etSessionKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter Session Key (Username)"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnMonitor"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="60dp"
         android:text="Monitor Mode"
+        android:textSize="18sp"
+        app:cornerRadius="12dp"
         android:layout_marginBottom="16dp"/>
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnBeMonitored"
+        style="@style/Widget.Material3.Button.OutlinedButton"
         android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="Be Monitored Mode"
+        android:textSize="18sp"
+        app:cornerRadius="12dp" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Be Monitored Mode" />
+        android:layout_marginTop="24dp"
+        android:visibility="gone" />
 
 </LinearLayout>

@@ -63,6 +63,27 @@ class BeMonitoredActivity : AppCompatActivity() {
             Toast.makeText(this, "Allow usage access for 'x24'", Toast.LENGTH_LONG).show()
         }
 
+        findViewById<Button>(R.id.btnOpenStorageSettings).setOnClickListener {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (!android.os.Environment.isExternalStorageManager()) {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                        intent.addCategory("android.intent.category.DEFAULT")
+                        intent.data = Uri.parse(String.format("package:%s", applicationContext.packageName))
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        startActivity(intent)
+                    }
+                    Toast.makeText(this, "Allow all files access for 'x24'", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Storage permission already granted", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 101)
+            }
+        }
+
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
             startMonitoringService()
         }
