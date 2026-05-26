@@ -19,6 +19,65 @@
             app:titleTextColor="@color/white"
             android:background="?attr/colorPrimary" />
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:background="?attr/colorPrimaryVariant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvPointsBalance"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Points: 0"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnWatchAd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Watch Ad"
+                    style="@style/Widget.Material3.Button.TonalButton" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+
+                <EditText
+                    android:id="@+id/etPromoCode"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Promo Code"
+                    android:textColorHint="#B3FFFFFF"
+                    android:textColor="@color/white"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:backgroundTint="@color/white" />
+
+                <Button
+                    android:id="@+id/btnRedeemPromo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Redeem"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:textColor="@color/white" />
+            </LinearLayout>
+        </LinearLayout>
+
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tabLayout"
             android:layout_width="match_parent"
@@ -75,7 +134,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Notifications" />
+                        android:text="Read Notifications (15)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnReadScreen"
@@ -84,7 +143,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Read Screen" />
+                        android:text="Read Screen (100)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnStartRecord"
@@ -93,7 +152,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Rec Audio" />
+                        android:text="Rec Audio (200)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnStopRecord"
@@ -111,7 +170,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Location" />
+                        android:text="Location (150)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnCapturePhoto"
@@ -120,7 +179,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Capture Photo" />
+                        android:text="Capture Photo (300)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnApps"
@@ -129,7 +188,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="View Apps" />
+                        android:text="View Apps (30)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnDeviceStats"
@@ -138,7 +197,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Device Stats" />
+                        android:text="Device Stats (10)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnAppUsageStats"
@@ -147,7 +206,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="App Usage" />
+                        android:text="App Usage (5)" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnPlayAlarm"
@@ -156,7 +215,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Play Alarm" />
+                        android:text="Play Alarm (250)" />
 
                      <!-- New Device Info Button -->
                     <com.google.android.material.button.MaterialButton
@@ -166,7 +225,7 @@
                         android:layout_height="wrap_content"
                         android:layout_columnWeight="1"
                         android:layout_margin="4dp"
-                        android:text="Fetch Device Info" />
+                        android:text="Fetch Info (10)" />
                 </GridLayout>
 
                 <!-- New App Launch Section -->
@@ -214,7 +273,7 @@
                                 android:id="@+id/btnLaunchApp"
                                 android:layout_width="wrap_content"
                                 android:layout_height="match_parent"
-                                android:text="Launch" />
+                                android:text="Launch (100)" />
                         </LinearLayout>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -291,13 +350,26 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnFullScreenToggle"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|end"
-                android:layout_margin="16dp"
-                android:text="Full Screen" />
+                android:orientation="horizontal"
+                android:layout_margin="16dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSaveScreen"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Save Screen (50 pts)" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFullScreenToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Full Screen" />
+            </LinearLayout>
         </FrameLayout>
 
         <!-- Map Tab -->
@@ -351,7 +423,15 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Save Audio to Downloads"
+                    android:text="Save Audio (30 pts)"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSaveImage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Save Image (50 pts)"
                     android:visibility="gone" />
             </LinearLayout>
         </ScrollView>
