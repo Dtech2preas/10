@@ -80,8 +80,8 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var btnRedeemPromo: Button
 
     // Unity Ads
-    private val unityGameId = "1234567" // Placeholder ID, change later
-    private val testMode = true
+    private val unityGameId = "800001312" // Live Game ID
+    private val testMode = false
     private val adUnitId = "Rewarded_Android" // Default test rewarded ad unit
 
     override fun onCreate(savedInstanceState: Bundle?) {
