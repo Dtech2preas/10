@@ -25,13 +25,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.database.DataSnapshot
-import com.unity3d.ads.IUnityAdsInitializationListener
-import com.unity3d.ads.IUnityAdsLoadListener
-import com.unity3d.ads.IUnityAdsShowListener
-import com.unity3d.ads.UnityAds
-import com.unity3d.ads.UnityAdsShowOptions
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
@@ -79,10 +79,12 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var etPromoCode: android.widget.EditText
     private lateinit var btnRedeemPromo: Button
 
+    // Direct Ad WebView
+    private lateinit var adWebViewContainer: FrameLayout
+    private lateinit var adWebView: WebView
+    private var adStartTime: Long = 0
+
     // Unity Ads
-    private val unityGameId = "acaf908a-4db1-4ee1-9509-9f44f2dcb2a0" // Live Game ID
-    private val testMode = false
-    private val adUnitId = "Rewarded_Android" // Default test rewarded ad unit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,20 +129,15 @@ class MonitorActivity : AppCompatActivity() {
         pointsManager = PointsManager(this)
         tvPointsBalance = findViewById(R.id.tvPointsBalance)
         btnWatchAd = findViewById(R.id.btnWatchAd)
+
+        adWebViewContainer = findViewById(R.id.adWebViewContainer)
+        adWebView = findViewById(R.id.adWebView)
+
+        setupAdWebView()
         etPromoCode = findViewById(R.id.etPromoCode)
         btnRedeemPromo = findViewById(R.id.btnRedeemPromo)
 
         updatePointsUI()
-
-        UnityAds.initialize(this, unityGameId, testMode, object : IUnityAdsInitializationListener {
-            override fun onInitializationComplete() {
-                // Initialized
-            }
-
-            override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, message: String?) {
-                Toast.makeText(this@MonitorActivity, "Ads init failed: $message", Toast.LENGTH_SHORT).show()
-            }
-        })
 
         btnWatchAd.setOnClickListener {
             showRewardedAd()
@@ -399,40 +396,36 @@ class MonitorActivity : AppCompatActivity() {
         finish()
     }
 
+
+    private fun setupAdWebView() {
+        adWebView.settings.javaScriptEnabled = true
+        adWebView.settings.domStorageEnabled = true
+        adWebView.settings.allowContentAccess = true
+        adWebView.settings.allowFileAccess = true
+        adWebView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    return false // Let WebView load HTTP/HTTPS
+                }
+
+                // Attempt to open custom schemes (e.g. shein://) via Intent
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // Ignore if app not installed or any other issue
+                }
+                return true // Handled by us
+            }
+        }
+    }
+
     private fun showRewardedAd() {
-        btnWatchAd.isEnabled = false
-        btnWatchAd.text = "Loading Ad..."
-        UnityAds.load(adUnitId, object : IUnityAdsLoadListener {
-            override fun onUnityAdsAdLoaded(placementId: String) {
-                UnityAds.show(this@MonitorActivity, adUnitId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
-                    override fun onUnityAdsShowFailure(placementId: String, error: UnityAds.UnityAdsShowError, message: String) {
-                        Toast.makeText(this@MonitorActivity, "Failed to show ad.", Toast.LENGTH_SHORT).show()
-                        btnWatchAd.isEnabled = true
-                        btnWatchAd.text = "Watch Ad"
-                    }
-
-                    override fun onUnityAdsShowStart(placementId: String) {}
-                    override fun onUnityAdsShowClick(placementId: String) {}
-
-                    override fun onUnityAdsShowComplete(placementId: String, state: UnityAds.UnityAdsShowCompletionState) {
-                        btnWatchAd.isEnabled = true
-                        btnWatchAd.text = "Watch Ad"
-                        if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
-                            val earnedPoints = (50..100).random()
-                            pointsManager.addPoints(earnedPoints)
-                            updatePointsUI()
-                            Toast.makeText(this@MonitorActivity, "You earned $earnedPoints points!", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                })
-            }
-
-            override fun onUnityAdsFailedToLoad(placementId: String, error: UnityAds.UnityAdsLoadError, message: String) {
-                Toast.makeText(this@MonitorActivity, "Failed to load ad: $message", Toast.LENGTH_SHORT).show()
-                btnWatchAd.isEnabled = true
-                btnWatchAd.text = "Watch Ad"
-            }
-        })
+        val adUrl = "https://omg10.com/4/10205357"
+        adWebView.loadUrl(adUrl)
+        adWebViewContainer.visibility = View.VISIBLE
+        adStartTime = System.currentTimeMillis()
     }
 
     private fun updatePointsUI() {
@@ -834,4 +827,26 @@ class MonitorActivity : AppCompatActivity() {
             Toast.makeText(this, "Error saving screen text: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (adWebViewContainer.visibility == View.VISIBLE) {
+            val elapsedTime = System.currentTimeMillis() - adStartTime
+            adWebViewContainer.visibility = View.GONE
+            adWebView.loadUrl("about:blank") // Clear content
+
+            if (elapsedTime >= 10000) {
+                // Ad viewed for at least 10 seconds, award points
+                val earnedPoints = (50..100).random()
+                pointsManager.addPoints(earnedPoints)
+                updatePointsUI()
+                Toast.makeText(this, "You earned $earnedPoints points!", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Ad closed too early. You need to watch for at least 10s.", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        super.onBackPressed()
+    }
+
 }
