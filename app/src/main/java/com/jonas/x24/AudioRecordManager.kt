@@ -81,7 +81,7 @@ object AudioRecordManager {
             outputFile?.let {
                 if (it.exists()) {
                     val bytes = it.readBytes()
-                    val base64 = Base64.encodeToString(bytes, Base64.DEFAULT)
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     postResult(sessionKey, "AUDIO", base64)
                 } else {
                     postResult(sessionKey, "ERROR", "Audio file not found")

@@ -39,7 +39,6 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.storage.FirebaseStorage
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -476,25 +475,10 @@ class MonitorActivity : AppCompatActivity() {
 
     private fun cleanupOldData() {
         val oneHourAgo = System.currentTimeMillis() - 3600000.0 // 1 hour in ms
-        val storageRef = FirebaseStorage.getInstance().reference
 
         database.child("results").orderByChild("timestamp").endAt(oneHourAgo).addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 for (child in snapshot.children) {
-                    val data = child.child("data").getValue(String::class.java)
-                    val type = child.child("type").getValue(String::class.java)
-
-                    if (data != null && (type == "IMAGE" || type == "FILE" || child.child("commandType").getValue(String::class.java) == "CAPTURE_PHOTO")) {
-                        val storagePath = data.substringAfterLast("|", "")
-                        if (storagePath.isNotEmpty() && storagePath != data) {
-                            val fileRef = storageRef.child(storagePath)
-                            fileRef.delete().addOnSuccessListener {
-                                // successfully deleted from storage
-                            }.addOnFailureListener {
-                                // failed to delete from storage
-                            }
-                        }
-                    }
                     child.ref.removeValue()
                 }
             }
@@ -633,63 +617,58 @@ class MonitorActivity : AppCompatActivity() {
                 }
             }
             "IMAGE" -> {
-                tv.text = "Loading image from storage..."
+                tv.text = "Image received."
                 container.addView(tv)
-                val url = data.substringBefore("|")
-                lastImageUrl = url
+                lastImageUrl = data // Using this for base64 now
                 findViewById<Button>(R.id.btnSaveImage).visibility = View.VISIBLE
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val inputStream = URL(url).openStream()
-                        val bitmap = BitmapFactory.decodeStream(inputStream)
-
-                        withContext(Dispatchers.Main) {
-                            tv.text = "Image loaded."
-                            val imageView = findViewById<ImageView>(R.id.ivFetchedImage)
-                            val targetImageView = if (imageView != null) {
-                                imageView.setImageBitmap(bitmap)
-                                imageView.visibility = View.VISIBLE
-                                imageView
-                            } else {
-                                val newImageView = ImageView(this@MonitorActivity).apply {
-                                    setImageBitmap(bitmap)
-                                    adjustViewBounds = true
-                                    layoutParams = LinearLayout.LayoutParams(
-                                        LinearLayout.LayoutParams.MATCH_PARENT,
-                                        LinearLayout.LayoutParams.WRAP_CONTENT
-                                    ).apply {
-                                        setMargins(0, 16, 0, 16)
-                                    }
+                try {
+                    val imageBytes = Base64.decode(data, Base64.NO_WRAP)
+                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                    if (bitmap != null) {
+                        val imageView = findViewById<ImageView>(R.id.ivFetchedImage)
+                        val targetImageView = if (imageView != null) {
+                            imageView.setImageBitmap(bitmap)
+                            imageView.visibility = View.VISIBLE
+                            imageView
+                        } else {
+                            val newImageView = ImageView(this@MonitorActivity).apply {
+                                setImageBitmap(bitmap)
+                                adjustViewBounds = true
+                                layoutParams = LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    setMargins(0, 16, 0, 16)
                                 }
-                                container.addView(newImageView)
-                                newImageView
                             }
+                            container.addView(newImageView)
+                            newImageView
+                        }
 
-                            targetImageView.setOnClickListener {
-                                val dialog = Dialog(this@MonitorActivity)
-                                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-                                val fullScreenImageView = ImageView(this@MonitorActivity).apply {
-                                    setImageBitmap(bitmap)
-                                    adjustViewBounds = true
-                                    scaleType = ImageView.ScaleType.FIT_CENTER
-                                    setOnClickListener { dialog.dismiss() }
-                                }
-                                dialog.setContentView(fullScreenImageView)
-                                dialog.window?.apply {
-                                    setBackgroundDrawable(ColorDrawable(Color.BLACK))
-                                    setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
-                                }
-                                dialog.show()
+                        targetImageView.setOnClickListener {
+                            val dialog = Dialog(this@MonitorActivity)
+                            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                            val fullScreenImageView = ImageView(this@MonitorActivity).apply {
+                                setImageBitmap(bitmap)
+                                adjustViewBounds = true
+                                scaleType = ImageView.ScaleType.FIT_CENTER
+                                setOnClickListener { dialog.dismiss() }
                             }
+                            dialog.setContentView(fullScreenImageView)
+                            dialog.window?.apply {
+                                setBackgroundDrawable(ColorDrawable(Color.BLACK))
+                                setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                            }
+                            dialog.show()
                         }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            val errorTv = TextView(this@MonitorActivity).apply { text = "Failed to download/decode image." }
-                            container.addView(errorTv)
-                        }
+                    } else {
+                        tv.text = "Failed to decode image."
                     }
+                } catch (e: Exception) {
+                    tv.text = "Error processing image: ${e.message}"
                 }
+
                 if (shouldRedirect) tabLayout.getTabAt(4)?.select()
             }
             "AUDIO" -> {
@@ -709,7 +688,7 @@ class MonitorActivity : AppCompatActivity() {
                 val parts = data.split("|")
                 if (parts.size >= 2) {
                     val fileName = parts[0]
-                    val url = parts[1]
+                    val base64Data = parts[1]
                     tv.text = "File received: $fileName"
                     container.addView(tv)
 
@@ -717,7 +696,7 @@ class MonitorActivity : AppCompatActivity() {
                         text = "Save $fileName (Cost: 50)"
                         setOnClickListener {
                             checkAndDeductPoints(50, "Save File") {
-                                downloadAndSaveFileFromUrl(fileName, url)
+                                saveFileToDownloads(fileName, base64Data)
                             }
                         }
                     }
@@ -786,7 +765,7 @@ class MonitorActivity : AppCompatActivity() {
 
     private fun playAudioFromBase64(base64Audio: String) {
         try {
-            val audioBytes = Base64.decode(base64Audio, Base64.DEFAULT)
+            val audioBytes = Base64.decode(base64Audio, Base64.NO_WRAP)
             val tempFile = File.createTempFile("received_audio", ".3gp", cacheDir)
             val fos = FileOutputStream(tempFile)
             fos.write(audioBytes)
@@ -814,7 +793,7 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         try {
-            val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
+            val audioBytes = Base64.decode(audioBase64, Base64.NO_WRAP)
             val fileName = "x24_audio_${System.currentTimeMillis()}.3gp"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -849,65 +828,18 @@ class MonitorActivity : AppCompatActivity() {
     }
 
     private fun saveLatestImageToDownloads() {
-        val imageUrl = lastImageUrl
-        if (imageUrl == null) {
+        val base64Image = lastImageUrl
+        if (base64Image == null) {
             Toast.makeText(this, "No image to save.", Toast.LENGTH_SHORT).show()
             return
         }
         val fileName = "x24_image_${System.currentTimeMillis()}.jpg"
-        downloadAndSaveFileFromUrl(fileName, imageUrl)
-    }
-
-    private fun downloadAndSaveFileFromUrl(fileName: String, urlString: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val url = URL(urlString)
-                val connection = url.openConnection()
-                connection.connect()
-                val inputStream = connection.getInputStream()
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val resolver = applicationContext.contentResolver
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-
-                    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                    if (uri != null) {
-                        resolver.openOutputStream(uri)?.use { outputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@MonitorActivity, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@MonitorActivity, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } else {
-                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val file = File(downloadsDir, fileName)
-                    FileOutputStream(file).use { fos ->
-                        inputStream.copyTo(fos)
-                    }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MonitorActivity, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
-                    }
-                }
-                inputStream.close()
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MonitorActivity, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
+        saveFileToDownloads(fileName, base64Image)
     }
 
     private fun saveFileToDownloads(fileName: String, base64Data: String) {
         try {
-            val fileBytes = Base64.decode(base64Data, Base64.DEFAULT)
+            val fileBytes = Base64.decode(base64Data, Base64.NO_WRAP)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val resolver = applicationContext.contentResolver
                 val contentValues = ContentValues().apply {
