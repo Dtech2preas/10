@@ -6,6 +6,8 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
+import com.google.android.material.materialswitch.MaterialSwitch
+
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +27,8 @@ class AppsActivity : AppCompatActivity() {
 
     private var appsList: List<String> = listOf()
     private var watchedApps: MutableList<String> = mutableListOf()
+    private lateinit var switchAutoReadScreen: MaterialSwitch
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
