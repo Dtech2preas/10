@@ -48,6 +48,7 @@ class FirebaseCommandService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
     private var weatherUpdateJob: Job? = null
+    private var autoLocationJob: Job? = null
     private var liveScreenJob: Job? = null
     private val WEATHER_UPDATE_INTERVAL = 30 * 60 * 1000L // 30 mins
 

