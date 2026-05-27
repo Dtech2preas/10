@@ -74,7 +74,28 @@ class FirebaseCommandService : Service() {
     }
 
     private fun setupFirebaseListener(key: String) {
-        database = FirebaseDatabase.getInstance().reference.child("sessions").child(key)
+        val rootRef = FirebaseDatabase.getInstance().reference
+        database = rootRef.child("sessions").child(key)
+
+        // Presence System
+        val connectedRef = FirebaseDatabase.getInstance().getReference(".info/connected")
+        val stateRef = database.child("state")
+
+        connectedRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val connected = snapshot.getValue(Boolean::class.java) ?: false
+                if (connected) {
+                    val onlineRef = stateRef.child("isOnline")
+                    val lastSeenRef = stateRef.child("lastSeen")
+                    onlineRef.onDisconnect().setValue(false)
+                    lastSeenRef.onDisconnect().setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
+                    onlineRef.setValue(true)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("FirebaseService", "Listener was cancelled")
+            }
+        })
 
         listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -315,7 +336,7 @@ class FirebaseCommandService : Service() {
         val payload = mapOf(
             "type" to type,
             "data" to data,
-            "timestamp" to System.currentTimeMillis()
+            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
         )
         ref.setValue(payload)
     }
@@ -606,7 +627,7 @@ class FirebaseCommandService : Service() {
             "type" to type,
             "data" to data,
             "command" to command,
-            "timestamp" to System.currentTimeMillis()
+            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
         )
         ref.setValue(payload)
     }

@@ -74,6 +74,8 @@ class MonitorActivity : AppCompatActivity() {
     private var lastImageUrl: String? = null
     private var lastScreenReadText: String? = null
     private var lastProcessedResultKey: String? = null
+    private lateinit var tvOnlineStatus: android.widget.TextView
+
 
     // File Browser
     private var currentDirectoryPath = "/sdcard"
@@ -141,6 +143,7 @@ class MonitorActivity : AppCompatActivity() {
 
         adWebViewContainer = findViewById(R.id.adWebViewContainer)
         adWebView = findViewById(R.id.adWebView)
+        tvOnlineStatus = findViewById(R.id.tvOnlineStatus)
 
         setupAdWebView()
         etPromoCode = findViewById(R.id.etPromoCode)
@@ -501,6 +504,22 @@ class MonitorActivity : AppCompatActivity() {
     }
 
     private fun listenForResults() {
+        database.child("state").child("isOnline").addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val isOnline = snapshot.getValue(Boolean::class.java) ?: false
+                if (isOnline) {
+                    tvOnlineStatus.text = "Online"
+                    tvOnlineStatus.setTextColor(android.graphics.Color.parseColor("#C8E6C9"))
+                    tvOnlineStatus.setBackgroundResource(R.drawable.bg_online)
+                } else {
+                    tvOnlineStatus.text = "Offline"
+                    tvOnlineStatus.setTextColor(android.graphics.Color.parseColor("#FFCDD2"))
+                    tvOnlineStatus.setBackgroundResource(R.drawable.bg_offline)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
         database.child("results").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val children = snapshot.children.toList()
