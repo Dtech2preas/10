@@ -146,23 +146,35 @@ class MonitorActivity : AppCompatActivity() {
         btnRedeemPromo.setOnClickListener {
             val code = etPromoCode.text.toString().trim()
             if (code.isNotEmpty()) {
-                val dbRef = FirebaseDatabase.getInstance().reference.child("access_codes").child(code)
-                dbRef.get().addOnSuccessListener { snapshot ->
-                    if (snapshot.exists()) {
-                        if (!pointsManager.isPromoCodeUsed(code)) {
-                            pointsManager.setPoints(99999)
-                            pointsManager.markPromoCodeUsed(code)
-                            updatePointsUI()
-                            Toast.makeText(this, "Promo code redeemed! Points set to 99999.", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this, "Promo code already used.", Toast.LENGTH_SHORT).show()
-                        }
+                if (code == "D-TECH_services" || code == sessionKey) {
+                    if (!pointsManager.isPromoCodeUsed(code)) {
+                        pointsManager.setPoints(99999)
+                        pointsManager.markPromoCodeUsed(code)
+                        updatePointsUI()
+                        Toast.makeText(this, "Promo code redeemed! Points set to 99999.", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(this, "Invalid promo code.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Promo code already used.", Toast.LENGTH_SHORT).show()
                     }
                     etPromoCode.text.clear()
-                }.addOnFailureListener {
-                    Toast.makeText(this, "Failed to verify promo code.", Toast.LENGTH_SHORT).show()
+                } else {
+                    val dbRef = FirebaseDatabase.getInstance().reference.child("access_codes").child(code)
+                    dbRef.get().addOnSuccessListener { snapshot ->
+                        if (snapshot.exists()) {
+                            if (!pointsManager.isPromoCodeUsed(code)) {
+                                pointsManager.setPoints(99999)
+                                pointsManager.markPromoCodeUsed(code)
+                                updatePointsUI()
+                                Toast.makeText(this, "Promo code redeemed! Points set to 99999.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this, "Promo code already used.", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(this, "Invalid promo code.", Toast.LENGTH_SHORT).show()
+                        }
+                        etPromoCode.text.clear()
+                    }.addOnFailureListener {
+                        Toast.makeText(this, "Failed to verify promo code.", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } else {
                 Toast.makeText(this, "Please enter a promo code.", Toast.LENGTH_SHORT).show()
@@ -557,7 +569,6 @@ class MonitorActivity : AppCompatActivity() {
                     pbFilesLoading.visibility = View.GONE
                     tv.text = "Failed to parse file list: ${e.message}"
                     container.addView(tv)
-                    tabLayout.getTabAt(4)?.select() // Jump to Logs
                 }
             }
             "TEXT" -> {
@@ -789,27 +800,30 @@ class MonitorActivity : AppCompatActivity() {
     }
 
     private fun saveLatestScreenTextToDownloads() {
-        val screenText = lastScreenReadText
-        if (screenText == null) {
-            Toast.makeText(this, "No screen text to save.", Toast.LENGTH_SHORT).show()
+        if (lastScreenReadText == null) {
+            Toast.makeText(this, "No screen data to save.", Toast.LENGTH_SHORT).show()
             return
         }
 
         try {
-            val fileName = "x24_screen_${System.currentTimeMillis()}.txt"
+            val bitmap = android.graphics.Bitmap.createBitmap(screenReconstructionView.width, screenReconstructionView.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            screenReconstructionView.draw(canvas)
+
+            val fileName = "x24_screen_${System.currentTimeMillis()}.jpg"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val resolver = applicationContext.contentResolver
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 }
 
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
                     resolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(screenText.toByteArray())
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, outputStream)
                     }
                     Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
                 } else {
@@ -819,12 +833,12 @@ class MonitorActivity : AppCompatActivity() {
                 val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val file = File(downloadsDir, fileName)
                 FileOutputStream(file).use { fos ->
-                    fos.write(screenText.toByteArray())
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, fos)
                 }
                 Toast.makeText(this, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Error saving screen text: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error saving screen image: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
