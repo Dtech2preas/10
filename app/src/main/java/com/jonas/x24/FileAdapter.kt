@@ -34,13 +34,19 @@ class FileAdapter(context: Context, private val files: List<Map<String, Any>>, p
             tvDetails.text = Formatter.formatShortFileSize(context, size)
             if (type == "PICTURE") {
                 ivIcon.setImageResource(android.R.drawable.ic_menu_gallery)
-                btnFetch.visibility = View.VISIBLE
             } else if (type == "VIDEO") {
                 ivIcon.setImageResource(android.R.drawable.ic_menu_camera)
-                btnFetch.visibility = View.GONE
             } else {
                 ivIcon.setImageResource(android.R.drawable.ic_menu_help)
-                btnFetch.visibility = View.GONE
+            }
+
+            btnFetch.visibility = View.VISIBLE
+            if (size > 2 * 1024 * 1024) { // 2MB
+                btnFetch.isEnabled = false
+                btnFetch.text = "Too Large"
+            } else {
+                btnFetch.isEnabled = true
+                btnFetch.text = "Fetch"
             }
         }
 
