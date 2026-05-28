@@ -88,6 +88,7 @@ class MonitorActivity : AppCompatActivity() {
 
     // Points Manager
     private lateinit var pointsManager: PointsManager
+    private var isAdmin: Boolean = false
     private lateinit var tvPointsBalance: TextView
     private lateinit var btnWatchAd: Button
     private lateinit var etPromoCode: android.widget.EditText
@@ -106,6 +107,7 @@ class MonitorActivity : AppCompatActivity() {
         setContentView(R.layout.activity_monitor)
 
         sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
+        isAdmin = intent.getBooleanExtra("IS_ADMIN", false)
         database = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey)
 
         // Start alert service
@@ -144,6 +146,10 @@ class MonitorActivity : AppCompatActivity() {
         pointsManager = PointsManager(this)
         tvPointsBalance = findViewById(R.id.tvPointsBalance)
         btnWatchAd = findViewById(R.id.btnWatchAd)
+
+        if (isAdmin) {
+            btnWatchAd.visibility = View.GONE
+        }
 
         adWebViewContainer = findViewById(R.id.adWebViewContainer)
         adWebView = findViewById(R.id.adWebView)
@@ -497,10 +503,19 @@ class MonitorActivity : AppCompatActivity() {
     }
 
     private fun updatePointsUI() {
-        tvPointsBalance.text = "Points: ${pointsManager.getPoints()}"
+        if (isAdmin) {
+            tvPointsBalance.text = "Points: Unlimited (Admin)"
+        } else {
+            tvPointsBalance.text = "Points: ${pointsManager.getPoints()}"
+        }
     }
 
     private fun checkAndDeductPoints(cost: Int, commandName: String, action: () -> Unit) {
+        if (isAdmin) {
+            action()
+            return
+        }
+
         if (pointsManager.deductPoints(cost)) {
             updatePointsUI()
             action()
