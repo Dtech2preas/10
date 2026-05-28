@@ -1,0 +1,62 @@
+x24 App - System Analysis and Architecture Documentation
+======================================================
+
+Overview
+--------
+The x24 app is an Android mobile device management (MDM) / remote administration tool disguised under a benign identity. It leverages Firebase Realtime Database to send and receive remote commands, fetch device data, perform live screen monitoring, execute file exploration, and access background services (like notifications, camera, and microphone) without alerting the user. The app serves two primary roles: "Monitor" (the admin/controller) and "Be Monitored" (the client device).
+
+Identity and Disguise
+---------------------
+- **App Name**: Globally labeled as "Weather" to disguise the app's presence in app drawers and notification channels.
+- **Launcher Alias**: Labeled as "System Sync" with a standard sync vector icon. Tapping this alias intent redirects the user to Android Sync Settings (`ACTION_SYNC_SETTINGS`) to provide a cover story.
+- **Persistent Notification**: Uses a transparent icon and is titled "Weather" (and dynamically pulls the user's local city and temperature via the Open-Meteo API). This masks the foreground service necessary to keep the app alive in the background.
+
+Authentication and Firebase Architecture
+----------------------------------------
+Authentication is access-code based, functioning through a master secret code (`D-TECH_services`).
+The Firebase Realtime Database is structured as follows:
+- **`/access_codes/{code}`**: Managed by the `AdminActivity`. Holds boolean claims (`monitor_claimed`, `be_monitored_claimed`) to enforce a strict 1:1 ratio between one Monitor and one Be Monitored device per code.
+- **`/sessions/{code}/commands`**: A list of commands pushed by the Monitor. Each command is structured as a map with `{ command: "...", timestamp: ..., processed: false }`.
+- **`/sessions/{code}/results`**: The device's responses, typically structured as `{ type: "...", data: "...", timestamp: ... }`. Data for media (images, files, audio) is Base64-encoded.
+- **`/sessions/{code}/state`**: A presence tracking system (`isOnline`, `lastSeen`) utilizing Firebase's `.info/connected` to heartbeat the client's connectivity.
+- **`/alerts`**: Pushed by the Accessibility Service when monitored target apps are launched.
+
+Roles and UI Flow
+-----------------
+1. **MainActivity**: The entry point. Checks `SharedPreferences` for an existing session. If none, provides entry for either "Monitor" or "Be Monitored". Secret long-press (10 seconds) on the title text reveals the Admin Dashboard.
+2. **AdminActivity**: Generates new Access Codes, views all active sessions, their online statuses, and enables full compilation and download of all Firebase session logs as JSON.
+3. **MonitorActivity**: The dashboard for the controller. Requires points (earned via ads or promo codes) to execute commands. Tabs divide functionality: Controls, Files, Screen, Map, Logs/Results. Commands issued here write to Firebase.
+4. **BeMonitoredActivity**: Handles the upfront permissions on the client side, invoking Android intents to grant System Alert Window, Accessibility Service, Notification Listener, etc.
+
+Core Background Services
+------------------------
+1. **FirebaseCommandService**:
+   - A sticky Foreground Service that listens to the Firebase `commands` node.
+   - When a new command arrives, it marks it as processed and executes the logic (e.g., location fetching, silent alarms, app launching, pulling stats).
+   - Also responsible for polling the Open-Meteo API every 30 minutes to update the persistent "Weather" notification.
+   - Houses the coroutine logic for the "Live Screen" constant polling.
+2. **x24AccessibilityService**:
+   - Captures UI elements and reconstructs layout bounding boxes. Used to "read the screen" and simulate screenshot capabilities natively (bypassing strict Android 14+ MediaProjection limitations).
+   - Tracks `TYPE_WINDOW_STATE_CHANGED` events to alert the Monitor if specific watched apps are launched.
+3. **x24NotificationService**:
+   - An active `NotificationListenerService` that caches incoming notifications and maintains a dynamic list of active notifications, which can be retrieved remotely via the `READ_NOTIFICATIONS` command.
+4. **MonitorAlertService**:
+   - Runs on the "Monitor" device to listen to the `/alerts` Firebase path and generate local Android system notifications when the "Be Monitored" device triggers an alert.
+
+Remote Commands and Data Fetching
+---------------------------------
+All data is transferred through the free tier of Firebase Realtime Database. Because of this, files, images, and audio must be formatted correctly to stay under strict size constraints.
+- **Text Commands**: `GET_LOCATION`, `GET_DEVICE_STATS`, `GET_INSTALLED_APPS`, `GET_APP_USAGE`, `GET_RECENT_CALLS`, `READ_NOTIFICATIONS`, `READ_SCREEN`. All return string data.
+- **Media Commands**:
+  - `FETCH_PIC`: Locates an image file, downscales it so both dimensions are <= 1024px, applies JPEG compression, and encodes it using `Base64.NO_WRAP`.
+  - `FETCH_FILE`: Reads an arbitrary remote file (up to a 2MB hard limit to prevent OOM errors and RTDB overflow) and Base64 encodes it.
+  - `CAPTURE_PHOTO`: Launches a transparent/hidden activity (`HiddenCameraActivity`) that uses Camera2 API to silently capture an image, Base64 encodes it, and destroys itself.
+  - `START_RECORD_AUDIO` / `STOP_RECORD_AUDIO`: Uses `MediaRecorder` (AAC/MPEG_4 format). Encoded in Base64 upon completion.
+- **MDM Actions**: `PLAY_ALARM`, `LAUNCH_APP:{pkg}`, `START_LIVE_SCREEN` / `STOP_LIVE_SCREEN`.
+
+Monetization and Points
+-----------------------
+`MonitorActivity` requires the expenditure of points for executing commands.
+- Downloading files/images costs a flat 50 points.
+- Long-running tracking (like scheduled auto-location) calculates total point cost upfront `(Duration / Interval) * 50`.
+- Points are earned via watching an interstitial full-screen WebView ad for at least 10 seconds.
