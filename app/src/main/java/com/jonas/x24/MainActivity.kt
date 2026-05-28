@@ -117,18 +117,43 @@ class MainActivity : AppCompatActivity() {
             progressBar.visibility = android.view.View.VISIBLE
 
             val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
-            codeRef.child("be_monitored_claimed").setValue(true).addOnSuccessListener {
-                prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
-                val intent = Intent(this, BeMonitoredActivity::class.java)
-                intent.putExtra("SESSION_KEY", key)
-                startActivity(intent)
-                finish()
-            }.addOnFailureListener {
-                btnMonitor.isEnabled = true
-                btnBeMonitored.isEnabled = true
-                progressBar.visibility = android.view.View.GONE
-                Toast.makeText(this, "Code invalid or be monitored role already claimed", Toast.LENGTH_LONG).show()
-            }
+            codeRef.runTransaction(object : com.google.firebase.database.Transaction.Handler {
+                override fun doTransaction(currentData: com.google.firebase.database.MutableData): com.google.firebase.database.Transaction.Result {
+                    if (currentData.value == null) {
+                        return com.google.firebase.database.Transaction.abort()
+                    }
+
+                    val beMonitoredCount = currentData.child("be_monitored_count").getValue(Int::class.java) ?: 0
+                    val maxMonitoredAllowed = currentData.child("max_monitored_allowed").getValue(Int::class.java) ?: 1
+
+                    if (beMonitoredCount >= maxMonitoredAllowed) {
+                        return com.google.firebase.database.Transaction.abort()
+                    }
+
+                    currentData.child("be_monitored_count").value = beMonitoredCount + 1
+                    currentData.child("be_monitored_claimed").value = true // backward compat
+                    return com.google.firebase.database.Transaction.success(currentData)
+                }
+
+                override fun onComplete(
+                    error: com.google.firebase.database.DatabaseError?,
+                    committed: Boolean,
+                    currentData: com.google.firebase.database.DataSnapshot?
+                ) {
+                    if (committed) {
+                        prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
+                        val intent = Intent(this@MainActivity, BeMonitoredActivity::class.java)
+                        intent.putExtra("SESSION_KEY", key)
+                        startActivity(intent)
+                        finish()
+                    } else {
+                        btnMonitor.isEnabled = true
+                        btnBeMonitored.isEnabled = true
+                        progressBar.visibility = android.view.View.GONE
+                        Toast.makeText(this@MainActivity, "Code invalid or max monitored devices reached", Toast.LENGTH_LONG).show()
+                    }
+                }
+            })
         }
     }
 }
