@@ -15,6 +15,8 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 
 class x24AccessibilityService : AccessibilityService() {
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
 
     companion object {
         var instance: x24AccessibilityService? = null
@@ -84,7 +86,8 @@ class x24AccessibilityService : AccessibilityService() {
 
                     if (autoScreenRead && !hasReadScreenForApp.contains(packageName)) {
                         hasReadScreenForApp.add(packageName)
-                        CoroutineScope(Dispatchers.IO).launch {
+                        // using service scope
+                        serviceScope.launch {
                             delay(1500)
                             val contextData = getScreenContext()
                             val resultsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("results").push()
@@ -110,6 +113,7 @@ class x24AccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+    serviceScope.cancel()
     }
 
     // --- Actions ---
@@ -221,16 +225,13 @@ class x24AccessibilityService : AccessibilityService() {
                 if (!clicked && performLongClick(node)) {
                     clicked = true
                 }
-                node.recycle()
             }
         }
         if (clicked) {
-            root.recycle()
             return true
         }
 
         val result = traverseAndLongClick(root, targetText)
-        root.recycle()
         return result
     }
 
@@ -247,10 +248,10 @@ class x24AccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
             if (traverseAndLongClick(child, target)) {
-                child?.recycle()
+
                 return true
             }
-            child?.recycle()
+
         }
         return false
     }
@@ -262,7 +263,6 @@ class x24AccessibilityService : AccessibilityService() {
         val parent = node.parent
         if (parent != null) {
             val result = performLongClick(parent)
-            parent.recycle()
             return result
         }
         return false
@@ -273,7 +273,6 @@ class x24AccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return "No screen content available."
         val builder = StringBuilder()
         traverseNode(root, builder)
-        root.recycle()
         return builder.toString()
     }
 
@@ -316,7 +315,7 @@ class x24AccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
             traverseNode(child, builder)
-            child?.recycle()
+
         }
     }
 
@@ -331,17 +330,14 @@ class x24AccessibilityService : AccessibilityService() {
                 if (!clicked && performClick(node)) {
                     clicked = true
                 }
-                node.recycle()
             }
         }
         if (clicked) {
-            root.recycle()
             return true
         }
 
         // 2. Manual Traversal (fallback for complex hierarchies)
         val result = traverseAndClick(root, targetText)
-        root.recycle()
         return result
     }
 
@@ -358,10 +354,10 @@ class x24AccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
             if (traverseAndClick(child, target)) {
-                child?.recycle()
+
                 return true
             }
-            child?.recycle()
+
         }
         return false
     }
@@ -376,7 +372,6 @@ class x24AccessibilityService : AccessibilityService() {
         val parent = node.parent
         if (parent != null) {
             val result = performClick(parent)
-            parent.recycle()
             return result
         }
         return false
@@ -390,7 +385,6 @@ class x24AccessibilityService : AccessibilityService() {
         if (focus != null) {
             // Some keyboards/apps respond to ACTION_CLICK or specific editor actions when focused
             focus.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            focus.recycle()
         }
 
         // Also try to find a submit/search/send button and click it as a fallback
@@ -405,7 +399,6 @@ class x24AccessibilityService : AccessibilityService() {
                      if (!clicked && performClick(node)) {
                           clicked = true
                      }
-                     node.recycle()
                  }
             }
         }
@@ -419,15 +412,12 @@ class x24AccessibilityService : AccessibilityService() {
                 if (!clicked && performClick(node)) {
                     clicked = true
                 }
-                node.recycle()
             }
         }
 
         // Hardware keyboard enter simulation is not fully supported via GestureDescription.
         // If the above FOCUS_INPUT and text matching fail, we gracefully do nothing
         // to avoid unintended touches.
-
-        root.recycle()
     }
 
     private fun findNodesByContentDescription(node: AccessibilityNodeInfo?, targetDesc: String, list: MutableList<AccessibilityNodeInfo>) {
@@ -452,7 +442,6 @@ class x24AccessibilityService : AccessibilityService() {
                 arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
                 result = focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
             }
-            focus.recycle()
         } else {
             // Fallback: Find the first editable node on the screen
             val editableNodes = mutableListOf<AccessibilityNodeInfo>()
@@ -462,10 +451,8 @@ class x24AccessibilityService : AccessibilityService() {
                 val arguments = Bundle()
                 arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
                 result = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-                for (n in editableNodes) n.recycle()
-            }
+                            }
         }
-        root.recycle()
         return result
     }
 
@@ -481,7 +468,6 @@ class x24AccessibilityService : AccessibilityService() {
             // Child might be added to list, so we can't blindly recycle unless we manage it carefully.
             // For simplicity and safety against memory leaks, we let the caller recycle the list.
             if (child != null && !child.isEditable) {
-                child.recycle()
             }
         }
     }

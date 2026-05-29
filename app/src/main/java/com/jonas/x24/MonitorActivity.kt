@@ -44,6 +44,7 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +55,12 @@ import java.io.FileOutputStream
 import java.net.URL
 
 class MonitorActivity : AppCompatActivity() {
+
+    private var featuresListener: com.google.firebase.database.ValueEventListener? = null
+    private var onlineListener: com.google.firebase.database.ValueEventListener? = null
+    private var cameraStreamListener: com.google.firebase.database.ValueEventListener? = null
+    private var resultsListener: com.google.firebase.database.ChildEventListener? = null
+
     private lateinit var dbHelper: LocalDatabaseHelper
     private var liveScreenActive = false
     private var liveScreenJob: kotlinx.coroutines.Job? = null
@@ -120,6 +127,30 @@ class MonitorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(applicationContext, getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
         setContentView(R.layout.activity_monitor)
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (adWebViewContainer.visibility == View.VISIBLE) {
+                    val elapsedTime = System.currentTimeMillis() - adStartTime
+                    adWebViewContainer.visibility = View.GONE
+                    adWebView.loadUrl("about:blank") // Clear content
+
+                    if (elapsedTime >= 10000) {
+                        // Ad viewed for at least 10 seconds, award points
+                        val earnedPoints = (50..100).random()
+                        pointsManager.addPoints(earnedPoints)
+                        updatePointsUI()
+                        Toast.makeText(this@MonitorActivity, "You earned $earnedPoints points!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this@MonitorActivity, "Ad closed too early. You need to watch for at least 10s.", Toast.LENGTH_SHORT).show()
+                    }
+                    return
+                }
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
 
         sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
         isAdmin = intent.getBooleanExtra("IS_ADMIN", false)
@@ -272,7 +303,7 @@ class MonitorActivity : AppCompatActivity() {
                     sendCommand("START_LIVE_SCREEN")
                     tabLayout.getTabAt(2)?.select()
 
-                    liveScreenJob = CoroutineScope(Dispatchers.Main).launch {
+                    liveScreenJob = lifecycleScope.launch {
                         while (liveScreenActive) {
                             kotlinx.coroutines.delay(30000)
                             if (liveScreenActive) {
@@ -321,7 +352,7 @@ class MonitorActivity : AppCompatActivity() {
                     true
                 }
 
-                uiAutomatorJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                uiAutomatorJob = lifecycleScope.launch {
                     while (uiAutomatorActive) {
                         checkAndDeductPoints(1000, "UI Automator") {
                             // Points deducted, keep active
@@ -351,7 +382,7 @@ class MonitorActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 liveCameraActive = true
-                liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                liveCameraJob = lifecycleScope.launch {
                     while (liveCameraActive) {
                         checkAndDeductPoints(1000, "Live Camera") {
                             // First time, start the camera stream. Subsequent times just deduct points.
@@ -378,7 +409,7 @@ class MonitorActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 liveCameraActive = true
-                liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                liveCameraJob = lifecycleScope.launch {
                     while (liveCameraActive) {
                         checkAndDeductPoints(1000, "Live Camera") {
                             // Keep paying
@@ -491,7 +522,7 @@ class MonitorActivity : AppCompatActivity() {
         cleanupOldData()
 
         val featuresRef = FirebaseDatabase.getInstance().getReference("access_codes").child(sessionKey)
-        featuresRef.addValueEventListener(object : ValueEventListener {
+        featuresListener = featuresRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 if (snapshot.exists()) {
                     featureLiveCameraEnabled = snapshot.child("feature_live_camera").getValue(Boolean::class.java) ?: true
@@ -836,7 +867,7 @@ class MonitorActivity : AppCompatActivity() {
     }
 
     private fun listenForResults() {
-        database.child("state").child("isOnline").addValueEventListener(object : ValueEventListener {
+        onlineListener = database.child("state").child("isOnline").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val isOnline = snapshot.getValue(Boolean::class.java) ?: false
                 if (isOnline) {
@@ -856,7 +887,7 @@ class MonitorActivity : AppCompatActivity() {
         refreshHistoryFromLocalDatabase()
 
         // Listen for ONLY newly added results in Firebase
-        database.child("results").addChildEventListener(object : ChildEventListener {
+        resultsListener = database.child("results").addChildEventListener(object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                 val type = snapshot.child("type").value as? String
                 val data = snapshot.child("data").value as? String
@@ -885,7 +916,7 @@ class MonitorActivity : AppCompatActivity() {
         })
 
         // Listen for Live Camera Stream
-        database.child("camera_stream").child("frame").addValueEventListener(object : ValueEventListener {
+        cameraStreamListener = database.child("camera_stream").child("frame").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val base64Data = snapshot.getValue(String::class.java)
                 if (!base64Data.isNullOrEmpty()) {
@@ -955,7 +986,7 @@ class MonitorActivity : AppCompatActivity() {
             mapView.visibility = View.VISIBLE
             val polyline = Polyline()
             polyline.setPoints(geoPoints)
-            polyline.color = Color.BLUE
+            polyline.outlinePaint.color = Color.BLUE
             mapView.overlays.add(polyline)
 
             val currentPoint = geoPoints.last()
@@ -984,8 +1015,10 @@ class MonitorActivity : AppCompatActivity() {
         when (type) {
             "FILE_LIST" -> {
                 try {
+                    @Suppress("UNCHECKED_CAST")
                     val map = com.google.gson.Gson().fromJson(data, Map::class.java) as Map<String, Any>
                     val path = map["currentPath"] as String
+                    @Suppress("UNCHECKED_CAST")
                     val files = map["files"] as List<Map<String, Any>>
 
                     currentDirectoryPath = path
@@ -1332,25 +1365,13 @@ class MonitorActivity : AppCompatActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (adWebViewContainer.visibility == View.VISIBLE) {
-            val elapsedTime = System.currentTimeMillis() - adStartTime
-            adWebViewContainer.visibility = View.GONE
-            adWebView.loadUrl("about:blank") // Clear content
 
-            if (elapsedTime >= 10000) {
-                // Ad viewed for at least 10 seconds, award points
-                val earnedPoints = (50..100).random()
-                pointsManager.addPoints(earnedPoints)
-                updatePointsUI()
-                Toast.makeText(this, "You earned $earnedPoints points!", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(this, "Ad closed too early. You need to watch for at least 10s.", Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-        super.onBackPressed()
+    override fun onDestroy() {
+        super.onDestroy()
+        featuresListener?.let { FirebaseDatabase.getInstance().getReference("access_codes").child(sessionKey).removeEventListener(it) }
+        onlineListener?.let { database.child("state").child("isOnline").removeEventListener(it) }
+        cameraStreamListener?.let { database.child("camera_stream").child("frame").removeEventListener(it) }
+        resultsListener?.let { database.child("results").removeEventListener(it) }
+        mapView.onDetach()
     }
-
 }

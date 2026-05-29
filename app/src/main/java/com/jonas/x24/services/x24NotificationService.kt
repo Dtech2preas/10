@@ -4,7 +4,7 @@ import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+
 
 class x24NotificationService : NotificationListenerService() {
     companion object {
@@ -74,10 +74,11 @@ class x24NotificationService : NotificationListenerService() {
         // Broadcast notification to be read aloud
         if (!title.isNullOrEmpty() && !text.isNullOrEmpty()) {
             val intent = Intent("com.jonas.x24.NOTIFICATION_POSTED")
+            intent.setPackage(applicationContext.packageName)
             intent.putExtra("title", title)
             intent.putExtra("text", text)
             intent.putExtra("package", packageName)
-            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+            sendBroadcast(intent)
         }
     }
 

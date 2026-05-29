@@ -90,7 +90,7 @@ class MonitorAlertService : Service() {
                 description = descriptionText
                 setShowBadge(false)
             }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = androidx.core.content.ContextCompat.getSystemService(this, NotificationManager::class.java)!!
             notificationManager.createNotificationChannel(channel)
         }
     }
