@@ -152,6 +152,7 @@ class MonitorActivity : AppCompatActivity() {
         tabCamera = findViewById(R.id.tabCamera)
         tabResults = findViewById(R.id.tabResults)
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
+        ivLiveCameraFeed = findViewById(R.id.ivLiveCameraFeed)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
         fabScreenMenu = findViewById(R.id.fabScreenMenu)
         llScreenMenu = findViewById(R.id.llScreenMenu)
