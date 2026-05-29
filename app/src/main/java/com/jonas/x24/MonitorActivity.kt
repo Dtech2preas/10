@@ -73,6 +73,7 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var tabResults: ScrollView
     private lateinit var screenReconstructionView: ScreenReconstructionView
     private lateinit var btnFullScreenToggle: Button
+    private lateinit var btnSystemBack: Button
     private lateinit var fabScreenMenu: com.google.android.material.floatingactionbutton.FloatingActionButton
     private lateinit var llScreenMenu: LinearLayout
     private var isScreenMenuOpen = false
@@ -154,6 +155,7 @@ class MonitorActivity : AppCompatActivity() {
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
         ivLiveCameraFeed = findViewById(R.id.ivLiveCameraFeed)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
+        btnSystemBack = findViewById(R.id.btnSystemBack)
         fabScreenMenu = findViewById(R.id.fabScreenMenu)
         llScreenMenu = findViewById(R.id.llScreenMenu)
         appBarLayout = findViewById(R.id.appBarLayout)
@@ -231,6 +233,10 @@ class MonitorActivity : AppCompatActivity() {
 
         btnFullScreenToggle.setOnClickListener {
             toggleFullScreen()
+        }
+
+        btnSystemBack.setOnClickListener {
+            sendCommand("DISPATCH_GESTURE:BACK")
         }
 
         btnSaveAudio.setOnClickListener {
