@@ -329,7 +329,7 @@ class FirebaseCommandService : Service() {
             sb.append("Internal Storage: ${availableSpaceMB}MB free of ${totalSpaceMB}MB\n")
 
             // Network
-            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val connectivityManager = androidx.core.content.ContextCompat.getSystemService(this, ConnectivityManager::class.java)!!
             val network = connectivityManager.activeNetwork
             val capabilities = connectivityManager.getNetworkCapabilities(network)
             if (capabilities != null) {
@@ -357,7 +357,7 @@ class FirebaseCommandService : Service() {
             return
         }
 
-        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val locationManager = androidx.core.content.ContextCompat.getSystemService(this, LocationManager::class.java)!!
         var location: Location? = null
         try {
             location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -371,6 +371,7 @@ class FirebaseCommandService : Service() {
         if (location != null) {
             val geocoder = Geocoder(this, java.util.Locale.getDefault())
             try {
+                @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                 if (!addresses.isNullOrEmpty()) {
                     val address = addresses[0]
@@ -428,7 +429,7 @@ class FirebaseCommandService : Service() {
 
     private fun playRemoteAlarm() {
         try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val audioManager = androidx.core.content.ContextCompat.getSystemService(this, AudioManager::class.java)!!
             audioManager.setStreamVolume(
                 AudioManager.STREAM_ALARM,
                 audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
@@ -482,7 +483,7 @@ class FirebaseCommandService : Service() {
     }
 
     private fun getAppUsageStats() {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val usm = androidx.core.content.ContextCompat.getSystemService(this, UsageStatsManager::class.java)!!
         val endTime = System.currentTimeMillis()
         val startTime = endTime - 1000 * 60 * 60 * 24 // 24 hours ago
         val usageStatsList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
@@ -545,7 +546,7 @@ class FirebaseCommandService : Service() {
         sb.append("Battery: ${batteryPct.toInt()}% " + (if (isCharging) "(Charging)\n" else "(Not Charging)\n"))
 
         // RAM Status
-        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val activityManager = androidx.core.content.ContextCompat.getSystemService(this, android.app.ActivityManager::class.java)!!
         val memoryInfo = android.app.ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(memoryInfo)
         val availableRamGb = memoryInfo.availMem.toDouble() / (1024 * 1024 * 1024)
@@ -566,7 +567,7 @@ class FirebaseCommandService : Service() {
         }
 
         // Network Status
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val cm = androidx.core.content.ContextCompat.getSystemService(this, ConnectivityManager::class.java)!!
         val network = cm.activeNetwork
         val capabilities = cm.getNetworkCapabilities(network)
         if (capabilities != null) {
@@ -675,7 +676,7 @@ class FirebaseCommandService : Service() {
             ).apply {
                 setShowBadge(false)
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = androidx.core.content.ContextCompat.getSystemService(this, NotificationManager::class.java)!!
             manager.createNotificationChannel(channel)
         }
 
@@ -710,7 +711,7 @@ class FirebaseCommandService : Service() {
 
     private fun updateWeatherNotification() {
         try {
-            val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val locationManager = androidx.core.content.ContextCompat.getSystemService(this, LocationManager::class.java)!!
             var location: Location? = null
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -724,6 +725,7 @@ class FirebaseCommandService : Service() {
 
             if (location != null) {
                 val geocoder = Geocoder(this, java.util.Locale.getDefault())
+                @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                 val city = addresses?.firstOrNull()?.locality ?: "Unknown City"
 
@@ -743,7 +745,7 @@ class FirebaseCommandService : Service() {
                         val text = "Temperature: $temp°C"
 
                         val notification = createNotification(title, text)
-                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        val notificationManager = androidx.core.content.ContextCompat.getSystemService(this, NotificationManager::class.java)!!
                         notificationManager.notify(1001, notification)
                         return
                     }
@@ -752,14 +754,14 @@ class FirebaseCommandService : Service() {
 
             // Fallback if location or API fetch failed
             val notification = createNotification("Weather", "Weather data unavailable")
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = androidx.core.content.ContextCompat.getSystemService(this, NotificationManager::class.java)!!
             notificationManager.notify(1001, notification)
 
         } catch (e: Exception) {
             Log.e("x24", "Failed to update weather: ${e.message}")
             // Fallback on exception
             val notification = createNotification("Weather", "Weather data unavailable")
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = androidx.core.content.ContextCompat.getSystemService(this, NotificationManager::class.java)!!
             notificationManager.notify(1001, notification)
         }
     }

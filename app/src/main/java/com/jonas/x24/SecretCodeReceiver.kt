@@ -28,7 +28,7 @@ class SecretCodeReceiver : BroadcastReceiver() {
             )
 
             val channelId = "x24_secret_channel"
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = androidx.core.content.ContextCompat.getSystemService(context, NotificationManager::class.java)!!
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(

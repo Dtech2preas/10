@@ -37,7 +37,7 @@ class CommandManager(private val context: Context) {
         val additionalOutput = StringBuilder()
 
         while (matcher.find()) {
-            val type = matcher.group(1)
+            val type = matcher.group(1) ?: continue
             val valueString = matcher.group(2) ?: ""
 
             val result = performAction(type, valueString)
@@ -156,7 +156,7 @@ class CommandManager(private val context: Context) {
     }
 
     private fun toggleDnd(enable: Boolean) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notificationManager = androidx.core.content.ContextCompat.getSystemService(context, android.app.NotificationManager::class.java)!!
         if (notificationManager.isNotificationPolicyAccessGranted) {
             val filter = if (enable) android.app.NotificationManager.INTERRUPTION_FILTER_NONE else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
             notificationManager.setInterruptionFilter(filter)
@@ -327,7 +327,7 @@ class CommandManager(private val context: Context) {
     }
 
     private fun controlMedia(action: String) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val audioManager = androidx.core.content.ContextCompat.getSystemService(context, AudioManager::class.java)!!
         val eventTime = android.os.SystemClock.uptimeMillis()
 
         val key = when(action) {
@@ -342,7 +342,7 @@ class CommandManager(private val context: Context) {
     }
 
     private fun toggleFlashlight(enable: Boolean) {
-        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameraManager = androidx.core.content.ContextCompat.getSystemService(context, CameraManager::class.java)!!
         try {
              val cameraId = cameraManager.cameraIdList[0]
              cameraManager.setTorchMode(cameraId, enable)
@@ -352,15 +352,17 @@ class CommandManager(private val context: Context) {
     }
 
     private fun toggleBluetooth(enable: Boolean) {
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        val bluetoothManager = androidx.core.content.ContextCompat.getSystemService(context, android.bluetooth.BluetoothManager::class.java)!!
+        val bluetoothAdapter = bluetoothManager.adapter
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
              return
         }
+        @Suppress("DEPRECATION")
         if (enable) bluetoothAdapter?.enable() else bluetoothAdapter?.disable()
     }
 
     private fun adjustVolume(action: String) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val audioManager = androidx.core.content.ContextCompat.getSystemService(context, AudioManager::class.java)!!
         when (action) {
             "UP" -> audioManager.adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
             "DOWN" -> audioManager.adjustVolume(AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
@@ -439,8 +441,13 @@ class CommandManager(private val context: Context) {
     }
 
     private fun sendSMS(number: String, message: String) {
-        val smsManager = SmsManager.getDefault()
-        smsManager.sendTextMessage(number, null, message, null, null)
+        val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(android.telephony.SmsManager::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getDefault()
+        }
+        smsManager?.sendTextMessage(number, null, message, null, null)
     }
 
     private fun launchCamera() {
@@ -482,7 +489,7 @@ class CommandManager(private val context: Context) {
     }
 
     private fun getBatteryLevel(): String {
-        val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val batteryManager = androidx.core.content.ContextCompat.getSystemService(context, BatteryManager::class.java)!!
         val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return "Your battery is at $level percent."
     }
@@ -493,7 +500,7 @@ class CommandManager(private val context: Context) {
             return "I need location permissions to do that."
         }
 
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val locationManager = androidx.core.content.ContextCompat.getSystemService(context, LocationManager::class.java)!!
         var location: Location? = null
         try {
             location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -507,6 +514,7 @@ class CommandManager(private val context: Context) {
         if (location != null) {
             val geocoder = Geocoder(context, Locale.getDefault())
             try {
+                @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                 if (!addresses.isNullOrEmpty()) {
                     val address = addresses[0]

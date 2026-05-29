@@ -40,7 +40,7 @@ object CameraStreamManager {
 
         startBackgroundThread()
 
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val manager = androidx.core.content.ContextCompat.getSystemService(context, CameraManager::class.java)!!
         try {
             var targetCameraId: String? = null
             for (cameraId in manager.cameraIdList) {
@@ -157,24 +157,48 @@ object CameraStreamManager {
             // Optimize for frame rate
             captureBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
 
-            cameraDevice?.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    if (cameraDevice == null) return
-                    captureSession = session
-                    try {
-                        // Repeating request for stream
-                        session.setRepeatingRequest(captureBuilder!!.build(), null, backgroundHandler)
-                    } catch (e: Exception) {
-                        postError("Capture failed: ${e.message}")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val config = android.hardware.camera2.params.SessionConfiguration(
+                    android.hardware.camera2.params.SessionConfiguration.SESSION_REGULAR,
+                    listOf(android.hardware.camera2.params.OutputConfiguration(surface)),
+                    java.util.concurrent.Executor { command -> backgroundHandler?.post(command) },
+                    object : CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: CameraCaptureSession) {
+                            if (cameraDevice == null) return
+                            captureSession = session
+                            try {
+                                captureSession?.setRepeatingRequest(captureBuilder!!.build(), null, backgroundHandler)
+                            } catch (e: Exception) {
+                                postError("Capture failed: ${e.message}")
+                                stopStreaming()
+                            }
+                        }
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            postError("Capture session configuration failed.")
+                            stopStreaming()
+                        }
+                    }
+                )
+                cameraDevice?.createCaptureSession(config)
+            } else {
+                @Suppress("DEPRECATION")
+                cameraDevice?.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        if (cameraDevice == null) return
+                        captureSession = session
+                        try {
+                            captureSession?.setRepeatingRequest(captureBuilder!!.build(), null, backgroundHandler)
+                        } catch (e: Exception) {
+                            postError("Capture failed: ${e.message}")
+                            stopStreaming()
+                        }
+                    }
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        postError("Capture session configuration failed.")
                         stopStreaming()
                     }
-                }
-
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    postError("Capture session configuration failed.")
-                    stopStreaming()
-                }
-            }, backgroundHandler)
+                }, backgroundHandler)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
