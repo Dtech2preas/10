@@ -468,6 +468,17 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <ImageView
+                    android:id="@+id/ivLiveCameraFeed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:adjustViewBounds="true"
+                    android:minHeight="200dp"
+                    android:scaleType="fitCenter"
+                    android:background="#000000"
+                    android:contentDescription="Live Camera Feed" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnStartLiveCameraFront"
                     android:layout_width="match_parent"
