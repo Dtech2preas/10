@@ -6,7 +6,7 @@
       ".read": true,
       "$code": {
         ".read": true,
-        ".write": "(!data.exists() && newData.child('secret').val() == 'D-TECH_services') || (data.exists() && newData.child('secret').val() == data.child('secret').val())",
+        ".write": "(!data.exists() && newData.child('secret').val() == 'D-TECH_services') || (data.exists() && (!newData.exists() || newData.child('secret').val() == data.child('secret').val()))",
         "secret": {
           ".validate": "newData.val() == 'D-TECH_services'"
         },
