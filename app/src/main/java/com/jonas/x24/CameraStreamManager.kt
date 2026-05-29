@@ -196,7 +196,9 @@ object CameraStreamManager {
     private fun stopBackgroundThread() {
         backgroundThread?.quitSafely()
         try {
-            backgroundThread?.join()
+            if (Thread.currentThread() != backgroundThread) {
+                backgroundThread?.join()
+            }
             backgroundThread = null
             backgroundHandler = null
         } catch (e: InterruptedException) {
