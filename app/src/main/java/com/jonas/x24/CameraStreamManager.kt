@@ -27,6 +27,7 @@ object CameraStreamManager {
 
     private var isStreaming = false
     private var currentSessionKey: String? = null
+    private var lastFrameTime = 0L
 
     fun startStreaming(context: Context, sessionKey: String, useFrontCamera: Boolean) {
         if (isStreaming) return
@@ -77,6 +78,13 @@ object CameraStreamManager {
                     try {
                         image = reader.acquireLatestImage()
                         if (image != null) {
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastFrameTime < 1000) {
+                                image.close()
+                                return@setOnImageAvailableListener
+                            }
+                            lastFrameTime = currentTime
+
                             val buffer: ByteBuffer = image.planes[0].buffer
                             val bytes = ByteArray(buffer.capacity())
                             buffer.get(bytes)

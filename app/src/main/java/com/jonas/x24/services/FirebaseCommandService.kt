@@ -151,7 +151,9 @@ class FirebaseCommandService : Service() {
                 "START_LIVE_CAMERA:BACK" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, false) }
                 "STOP_LIVE_CAMERA" -> com.jonas.x24.CameraStreamManager.stopStreaming()
                 else -> {
-                    if (command.startsWith("DISPATCH_GESTURE:CLICK:")) {
+                    if (command == "DISPATCH_GESTURE:BACK") {
+                        com.jonas.x24.services.x24AccessibilityService.instance?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                    } else if (command.startsWith("DISPATCH_GESTURE:CLICK:")) {
                         val coords = command.removePrefix("DISPATCH_GESTURE:CLICK:").split(":")
                         if (coords.size == 2) {
                             val xPercent = coords[0].toFloatOrNull()
