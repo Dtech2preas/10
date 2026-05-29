@@ -73,6 +73,7 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var tabResults: ScrollView
     private lateinit var screenReconstructionView: ScreenReconstructionView
     private lateinit var btnFullScreenToggle: Button
+    private lateinit var appBarLayout: com.google.android.material.appbar.AppBarLayout
     private var isFullScreen = false
     private var lastAudioBase64: String? = null
     private var lastImageUrl: String? = null
@@ -149,6 +150,7 @@ class MonitorActivity : AppCompatActivity() {
         tabResults = findViewById(R.id.tabResults)
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
+        appBarLayout = findViewById(R.id.appBarLayout)
 
         tvCurrentPath = findViewById(R.id.tvCurrentPath)
         lvFiles = findViewById(R.id.lvFiles)
@@ -254,14 +256,13 @@ class MonitorActivity : AppCompatActivity() {
                     sendCommand("START_LIVE_SCREEN")
                     tabLayout.getTabAt(2)?.select()
 
-                    val prefs = getSharedPreferences("x24_prefs", android.content.Context.MODE_PRIVATE)
                     liveScreenJob = CoroutineScope(Dispatchers.Main).launch {
                         while (liveScreenActive) {
                             kotlinx.coroutines.delay(30000)
                             if (liveScreenActive) {
                                 checkAndDeductPoints(150, "Live Screen Tick") {}
-                                val pts = prefs.getInt("USER_POINTS", 0)
-                                if (pts < 150) {
+                                val pts = pointsManager.getPoints()
+                                if (pts < 150 && !isAdmin) {
                                     liveScreenActive = false
                                     sendCommand("STOP_LIVE_SCREEN")
                                     Toast.makeText(this@MonitorActivity, "Out of points. Live Screen stopped.", Toast.LENGTH_SHORT).show()
@@ -580,6 +581,7 @@ class MonitorActivity : AppCompatActivity() {
     private fun toggleFullScreen() {
         isFullScreen = !isFullScreen
         if (isFullScreen) {
+            appBarLayout.visibility = View.GONE
             tabLayout.visibility = View.GONE
             btnFullScreenToggle.text = "Exit Full Screen"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -592,6 +594,7 @@ class MonitorActivity : AppCompatActivity() {
                         or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
             }
         } else {
+            appBarLayout.visibility = View.VISIBLE
             tabLayout.visibility = View.VISIBLE
             btnFullScreenToggle.text = "Full Screen"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
