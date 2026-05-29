@@ -91,6 +91,7 @@ class MonitorActivity : AppCompatActivity() {
     private var uiAutomatorActive = false
     private var featureLiveCameraEnabled = true
     private var featureUiAutomatorEnabled = true
+    private lateinit var ivLiveCameraFeed: ImageView
     private lateinit var tvCurrentPath: TextView
     private lateinit var lvFiles: android.widget.ListView
     private lateinit var pbFilesLoading: android.widget.ProgressBar
@@ -380,6 +381,7 @@ class MonitorActivity : AppCompatActivity() {
             liveCameraActive = false
             liveCameraJob?.cancel()
             sendCommand("STOP_LIVE_CAMERA")
+            ivLiveCameraFeed.setImageDrawable(null)
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
@@ -844,6 +846,28 @@ class MonitorActivity : AppCompatActivity() {
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onCancelled(error: DatabaseError) {
                 Toast.makeText(this@MonitorActivity, "Error listening to results", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        // Listen for Live Camera Stream
+        database.child("camera_stream").child("frame").addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val base64Data = snapshot.getValue(String::class.java)
+                if (!base64Data.isNullOrEmpty()) {
+                    try {
+                        val imageBytes = Base64.decode(base64Data, Base64.NO_WRAP)
+                        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        if (bitmap != null) {
+                            ivLiveCameraFeed.setImageBitmap(bitmap)
+                        }
+                    } catch (e: Exception) {
+                        // ignore bad frames
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(this@MonitorActivity, "Error listening to camera stream", Toast.LENGTH_SHORT).show()
             }
         })
     }
