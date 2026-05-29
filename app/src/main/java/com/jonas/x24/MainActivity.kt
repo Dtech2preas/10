@@ -120,7 +120,7 @@ class MainActivity : AppCompatActivity() {
             codeRef.runTransaction(object : com.google.firebase.database.Transaction.Handler {
                 override fun doTransaction(currentData: com.google.firebase.database.MutableData): com.google.firebase.database.Transaction.Result {
                     if (currentData.value == null) {
-                        return com.google.firebase.database.Transaction.abort()
+                        return com.google.firebase.database.Transaction.success(currentData) // Let the server re-run
                     }
 
                     val beMonitoredCount = currentData.child("be_monitored_count").getValue(Int::class.java) ?: 0
@@ -140,7 +140,7 @@ class MainActivity : AppCompatActivity() {
                     committed: Boolean,
                     currentData: com.google.firebase.database.DataSnapshot?
                 ) {
-                    if (committed) {
+                    if (committed && currentData?.exists() == true) {
                         prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
                         val intent = Intent(this@MainActivity, BeMonitoredActivity::class.java)
                         intent.putExtra("SESSION_KEY", key)

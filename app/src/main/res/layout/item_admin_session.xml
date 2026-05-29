@@ -44,6 +44,29 @@
         android:orientation="horizontal"
         android:layout_marginTop="8dp">
 
+        <CheckBox
+            android:id="@+id/cbLiveCameraToggle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Live Cam"
+            android:textSize="12sp" />
+
+        <CheckBox
+            android:id="@+id/cbUiAutomatorToggle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="UI Auto"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp">
+
         <Button
             android:id="@+id/btnMonitorDevice"
             android:layout_width="0dp"

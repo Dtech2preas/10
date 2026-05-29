@@ -401,6 +401,14 @@
                 android:orientation="horizontal"
                 android:layout_margin="16dp">
 
+                <ToggleButton
+                    android:id="@+id/toggleUiAutomator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:textOn="UI Automator ON"
+                    android:textOff="UI Automator OFF" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSaveScreen"
                     android:layout_width="wrap_content"
@@ -427,6 +435,41 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
         </FrameLayout>
+
+        <!-- Camera Tab -->
+        <ScrollView
+            android:id="@+id/tabCamera"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStartLiveCameraFront"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="Start Front Camera (1000/m)" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStartLiveCameraBack"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="Start Back Camera (1000/m)" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStopLiveCamera"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="Stop Camera" />
+            </LinearLayout>
+        </ScrollView>
 
         <!-- Results / Logs Tab -->
         <ScrollView
