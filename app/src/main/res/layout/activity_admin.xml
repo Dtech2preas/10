@@ -53,6 +53,30 @@
             android:textStyle="bold"
             android:layout_marginBottom="16dp"/>
 
+        <EditText
+            android:id="@+id/etMaxMonitored"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Max allowed monitored devices (default 1)"
+            android:inputType="number"
+            android:layout_marginBottom="8dp"/>
+
+        <CheckBox
+            android:id="@+id/cbFeatureLiveCamera"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enable Live Camera"
+            android:checked="true"
+            android:layout_marginBottom="4dp"/>
+
+        <CheckBox
+            android:id="@+id/cbFeatureUiAutomator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enable UI Automator"
+            android:checked="true"
+            android:layout_marginBottom="8dp"/>
+
         <Button
             android:id="@+id/btnGenerateCode"
             android:layout_width="match_parent"

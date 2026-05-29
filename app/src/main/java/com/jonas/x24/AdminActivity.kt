@@ -39,6 +39,9 @@ class AdminActivity : AppCompatActivity() {
         val etMasterPassword = findViewById<EditText>(R.id.etMasterPassword)
         val btnLogin = findViewById<Button>(R.id.btnLogin)
         val btnGenerateCode = findViewById<Button>(R.id.btnGenerateCode)
+        val etMaxMonitored = findViewById<EditText>(R.id.etMaxMonitored)
+        val cbFeatureLiveCamera = findViewById<CheckBox>(R.id.cbFeatureLiveCamera)
+        val cbFeatureUiAutomator = findViewById<CheckBox>(R.id.cbFeatureUiAutomator)
 
         btnLogin.setOnClickListener {
             val password = etMasterPassword.text.toString()
@@ -52,13 +55,20 @@ class AdminActivity : AppCompatActivity() {
         }
 
         btnGenerateCode.setOnClickListener {
+            val maxMonitoredStr = etMaxMonitored.text.toString()
+            val maxMonitored = if (maxMonitoredStr.isNotEmpty()) maxMonitoredStr.toIntOrNull() ?: 1 else 1
+
             val newCode = UUID.randomUUID().toString().substring(0, 8)
             val dbRef = FirebaseDatabase.getInstance().getReference("access_codes").child(newCode)
 
             val codeData = hashMapOf(
                 "secret" to MASTER_PASSWORD,
                 "monitor_claimed" to false,
-                "be_monitored_claimed" to false
+                "be_monitored_claimed" to false, // keep for backward compatibility
+                "be_monitored_count" to 0,
+                "max_monitored_allowed" to maxMonitored,
+                "feature_live_camera" to cbFeatureLiveCamera.isChecked,
+                "feature_ui_automator" to cbFeatureUiAutomator.isChecked
             )
 
             dbRef.setValue(codeData).addOnSuccessListener {
@@ -86,9 +96,10 @@ class AdminActivity : AppCompatActivity() {
                 for (codeSnapshot in snapshot.children) {
                     val code = codeSnapshot.key ?: continue
                     val monitorClaimed = codeSnapshot.child("monitor_claimed").getValue(Boolean::class.java) ?: false
-                    val beMonitoredClaimed = codeSnapshot.child("be_monitored_claimed").getValue(Boolean::class.java) ?: false
+                    val beMonitoredCount = codeSnapshot.child("be_monitored_count").getValue(Int::class.java) ?: 0
+                    val maxMonitoredAllowed = codeSnapshot.child("max_monitored_allowed").getValue(Int::class.java) ?: 1
 
-                    addSessionToView(code, monitorClaimed, beMonitoredClaimed)
+                    addSessionToView(code, monitorClaimed, beMonitoredCount, maxMonitoredAllowed)
                 }
             }
 
@@ -98,7 +109,7 @@ class AdminActivity : AppCompatActivity() {
         })
     }
 
-    private fun addSessionToView(code: String, monitorClaimed: Boolean, beMonitoredClaimed: Boolean) {
+    private fun addSessionToView(code: String, monitorClaimed: Boolean, beMonitoredCount: Int, maxMonitoredAllowed: Int) {
         val view = LayoutInflater.from(this).inflate(R.layout.item_admin_session, llSessionsList, false)
 
         val tvSessionCode = view.findViewById<TextView>(R.id.tvSessionCode)
@@ -111,7 +122,7 @@ class AdminActivity : AppCompatActivity() {
         val btnKillSession = view.findViewById<Button>(R.id.btnKillSession)
 
         tvSessionCode.text = "Code: $code"
-        tvSessionDetails.text = "Monitor: $monitorClaimed | Monitored: $beMonitoredClaimed"
+        tvSessionDetails.text = "Monitor: $monitorClaimed | Monitored: $beMonitoredCount / $maxMonitoredAllowed"
 
         // Check online status
         val statusRef = FirebaseDatabase.getInstance().getReference("sessions").child(code).child("state").child("isOnline")

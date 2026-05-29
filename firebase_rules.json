@@ -14,7 +14,19 @@
           ".validate": "newData.isBoolean() && (!data.exists() || data.val() == false)"
         },
         "be_monitored_claimed": {
-          ".validate": "newData.isBoolean() && (!data.exists() || data.val() == false)"
+          ".validate": "newData.isBoolean()"
+        },
+        "be_monitored_count": {
+          ".validate": "newData.isNumber()"
+        },
+        "max_monitored_allowed": {
+          ".validate": "newData.isNumber()"
+        },
+        "feature_live_camera": {
+          ".validate": "newData.isBoolean()"
+        },
+        "feature_ui_automator": {
+          ".validate": "newData.isBoolean()"
         }
       }
     },
