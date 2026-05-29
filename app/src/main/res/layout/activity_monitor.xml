@@ -398,29 +398,49 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|end"
-                android:orientation="horizontal"
+                android:orientation="vertical"
+                android:gravity="end"
                 android:layout_margin="16dp">
 
-                <ToggleButton
-                    android:id="@+id/toggleUiAutomator"
+                <LinearLayout
+                    android:id="@+id/llScreenMenu"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
-                    android:textOn="UI Automator ON"
-                    android:textOff="UI Automator OFF" />
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:layout_marginBottom="16dp"
+                    android:gravity="end">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSaveScreen"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
-                    android:text="Save Screen (50 pts)" />
+                    <ToggleButton
+                        android:id="@+id/toggleUiAutomator"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:textOn="UI Automator ON"
+                        android:textOff="UI Automator OFF" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnFullScreenToggle"
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSaveScreen"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Save Screen (50 pts)" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnFullScreenToggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Full Screen" />
+                </LinearLayout>
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabScreenMenu"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Full Screen" />
+                    android:src="@drawable/ic_menu"
+                    app:tint="@android:color/white"
+                    app:backgroundTint="?attr/colorPrimary"
+                    android:contentDescription="Menu" />
             </LinearLayout>
         </FrameLayout>
 

@@ -73,6 +73,9 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var tabResults: ScrollView
     private lateinit var screenReconstructionView: ScreenReconstructionView
     private lateinit var btnFullScreenToggle: Button
+    private lateinit var fabScreenMenu: com.google.android.material.floatingactionbutton.FloatingActionButton
+    private lateinit var llScreenMenu: LinearLayout
+    private var isScreenMenuOpen = false
     private lateinit var appBarLayout: com.google.android.material.appbar.AppBarLayout
     private var isFullScreen = false
     private var lastAudioBase64: String? = null
@@ -150,7 +153,13 @@ class MonitorActivity : AppCompatActivity() {
         tabResults = findViewById(R.id.tabResults)
         screenReconstructionView = findViewById(R.id.screenReconstructionView)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
+        fabScreenMenu = findViewById(R.id.fabScreenMenu)
+        llScreenMenu = findViewById(R.id.llScreenMenu)
         appBarLayout = findViewById(R.id.appBarLayout)
+
+        fabScreenMenu.setOnClickListener {
+            toggleScreenMenu()
+        }
 
         tvCurrentPath = findViewById(R.id.tvCurrentPath)
         lvFiles = findViewById(R.id.lvFiles)
@@ -578,12 +587,28 @@ class MonitorActivity : AppCompatActivity() {
         }
     }
 
+    private fun toggleScreenMenu() {
+        isScreenMenuOpen = !isScreenMenuOpen
+        if (isScreenMenuOpen) {
+            llScreenMenu.visibility = View.VISIBLE
+            fabScreenMenu.setImageResource(R.drawable.ic_close)
+        } else {
+            llScreenMenu.visibility = View.GONE
+            fabScreenMenu.setImageResource(R.drawable.ic_menu)
+        }
+    }
+
     private fun toggleFullScreen() {
         isFullScreen = !isFullScreen
         if (isFullScreen) {
             appBarLayout.visibility = View.GONE
             tabLayout.visibility = View.GONE
             btnFullScreenToggle.text = "Exit Full Screen"
+            // Hide the menu when entering full screen so it doesn't block view, but FAB remains
+            isScreenMenuOpen = false
+            llScreenMenu.visibility = View.GONE
+            fabScreenMenu.setImageResource(R.drawable.ic_menu)
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
                 window.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
