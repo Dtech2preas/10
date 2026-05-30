@@ -93,6 +93,8 @@ class MonitorActivity : AppCompatActivity() {
     // Live Camera / UI Automator
     private var liveCameraJob: kotlinx.coroutines.Job? = null
     private var uiAutomatorJob: kotlinx.coroutines.Job? = null
+    private var recordAudioJob: kotlinx.coroutines.Job? = null
+    private var autoLocationJob: kotlinx.coroutines.Job? = null
     private var liveCameraActive = false
     private var uiAutomatorActive = false
     private var featureLiveCameraEnabled = true
@@ -286,9 +288,17 @@ class MonitorActivity : AppCompatActivity() {
                     tabLayout.getTabAt(2)?.select()
 
                     liveScreenJob = CoroutineScope(Dispatchers.Main).launch {
+                        val startTime = System.currentTimeMillis()
                         while (liveScreenActive) {
                             kotlinx.coroutines.delay(30000)
                             if (liveScreenActive) {
+                                if (System.currentTimeMillis() - startTime > 10 * 60 * 1000) {
+                                    liveScreenActive = false
+                                    setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), false)
+                                    sendCommand("STOP_LIVE_SCREEN")
+                                    Toast.makeText(this@MonitorActivity, "10-minute timeout reached. Live Screen stopped.", Toast.LENGTH_SHORT).show()
+                                    break
+                                }
                                 checkAndDeductPoints(150, "Live Screen Tick") {}
                                 val pts = pointsManager.getPoints()
                                 if (pts < 150 && !isAdmin) {
@@ -363,7 +373,14 @@ class MonitorActivity : AppCompatActivity() {
                 }
 
                 uiAutomatorJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    val startTime = System.currentTimeMillis()
                     while (uiAutomatorActive) {
+                        if (System.currentTimeMillis() - startTime > 10 * 60 * 1000) {
+                            uiAutomatorActive = false
+                            findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+                            android.widget.Toast.makeText(this@MonitorActivity, "10-minute timeout reached. UI Automator stopped.", android.widget.Toast.LENGTH_SHORT).show()
+                            break
+                        }
                         checkAndDeductPoints(1000, "UI Automator") {
                             // Points deducted, keep active
                         }
@@ -394,7 +411,16 @@ class MonitorActivity : AppCompatActivity() {
                 liveCameraActive = true
                 setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), true)
                 liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    val startTime = System.currentTimeMillis()
                     while (liveCameraActive) {
+                        if (System.currentTimeMillis() - startTime > 10 * 60 * 1000) {
+                            liveCameraActive = false
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
+                            sendCommand("STOP_LIVE_CAMERA")
+                            android.widget.Toast.makeText(this@MonitorActivity, "10-minute timeout reached. Live Camera stopped.", android.widget.Toast.LENGTH_SHORT).show()
+                            break
+                        }
                         checkAndDeductPoints(1000, "Live Camera") {
                             // First time, start the camera stream. Subsequent times just deduct points.
                         }
@@ -424,7 +450,16 @@ class MonitorActivity : AppCompatActivity() {
                 liveCameraActive = true
                 setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), true)
                 liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    val startTime = System.currentTimeMillis()
                     while (liveCameraActive) {
+                        if (System.currentTimeMillis() - startTime > 10 * 60 * 1000) {
+                            liveCameraActive = false
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
+                            sendCommand("STOP_LIVE_CAMERA")
+                            android.widget.Toast.makeText(this@MonitorActivity, "10-minute timeout reached. Live Camera stopped.", android.widget.Toast.LENGTH_SHORT).show()
+                            break
+                        }
                         checkAndDeductPoints(1000, "Live Camera") {
                             // Keep paying
                         }
@@ -454,11 +489,18 @@ class MonitorActivity : AppCompatActivity() {
             checkAndDeductPoints(200, "Rec Audio") {
                 setButtonActive(findViewById<Button>(R.id.btnStartRecord), true)
                 sendCommand("START_RECORD_AUDIO")
+                recordAudioJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    kotlinx.coroutines.delay(10 * 60 * 1000)
+                    setButtonActive(findViewById<Button>(R.id.btnStartRecord), false)
+                    sendCommand("STOP_RECORD_AUDIO")
+                    android.widget.Toast.makeText(this@MonitorActivity, "10-minute timeout reached. Audio recording stopped.", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
         val btnStopRecord = findViewById<Button>(R.id.btnStopRecord)
         btnStopRecord.setOnClickListener {
+            recordAudioJob?.cancel()
             setButtonActive(findViewById<Button>(R.id.btnStartRecord), false)
             sendCommand("STOP_RECORD_AUDIO", btnStopRecord)
         }
@@ -574,6 +616,43 @@ class MonitorActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         mapView.onPause()
+    }
+
+
+    override fun onStop() {
+        super.onStop()
+        stopAllLiveTasks()
+    }
+
+    private fun stopAllLiveTasks() {
+        if (liveScreenActive) {
+            liveScreenActive = false
+            liveScreenJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), false)
+            sendCommand("STOP_LIVE_SCREEN")
+        }
+        if (liveCameraActive) {
+            liveCameraActive = false
+            liveCameraJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
+            sendCommand("STOP_LIVE_CAMERA")
+            ivLiveCameraFeed.setImageDrawable(null)
+        }
+        if (uiAutomatorActive) {
+            uiAutomatorActive = false
+            uiAutomatorJob?.cancel()
+            findViewById<android.widget.ToggleButton>(R.id.toggleUiAutomator)?.isChecked = false
+        }
+        if (recordAudioJob?.isActive == true) {
+            recordAudioJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartRecord), false)
+            sendCommand("STOP_RECORD_AUDIO")
+        }
+        if (autoLocationJob?.isActive == true) {
+            autoLocationJob?.cancel()
+            sendCommand("STOP_LOCATION_TRACKING")
+        }
     }
 
     private fun setupTabs() {
@@ -742,7 +821,7 @@ class MonitorActivity : AppCompatActivity() {
     private fun setButtonActive(button: Button?, isActive: Boolean) {
         if (button == null) return
         if (isActive) {
-            button.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#311B92"))
+            button.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#000080"))
         } else {
             // Material3 Primary Color is #FF6200EE (purple_500 in themes)
             button.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FF6200EE"))
