@@ -162,6 +162,17 @@ class FirebaseCommandService : Service() {
                                 com.jonas.x24.services.x24AccessibilityService.instance?.clickPercentage(xPercent, yPercent)
                             }
                         }
+                    } else if (command.startsWith("DISPATCH_GESTURE:SWIPE:")) {
+                        val coords = command.removePrefix("DISPATCH_GESTURE:SWIPE:").split(":")
+                        if (coords.size == 4) {
+                            val startXPercent = coords[0].toFloatOrNull()
+                            val startYPercent = coords[1].toFloatOrNull()
+                            val endXPercent = coords[2].toFloatOrNull()
+                            val endYPercent = coords[3].toFloatOrNull()
+                            if (startXPercent != null && startYPercent != null && endXPercent != null && endYPercent != null) {
+                                com.jonas.x24.services.x24AccessibilityService.instance?.swipePercentage(startXPercent, startYPercent, endXPercent, endYPercent)
+                            }
+                        }
                     } else if (command.startsWith("LAUNCH_APP:")) {
                         val pkgName = command.removePrefix("LAUNCH_APP:").trim()
                         launchApp(pkgName)
@@ -400,7 +411,7 @@ class FirebaseCommandService : Service() {
         liveScreenJob = serviceScope.launch {
             while (true) {
                 readScreen()
-                delay(3000) // Poll every 3 seconds
+                delay(1000) // Poll every 1 second
             }
         }
         postResult("TEXT", "Live Screen Stream Started")

@@ -161,6 +161,26 @@ class x24AccessibilityService : AccessibilityService() {
         dispatchGesture(builder.build(), null, null)
     }
 
+    fun swipePercentage(startXPercent: Float, startYPercent: Float, endXPercent: Float, endYPercent: Float) {
+        val displayMetrics = resources.displayMetrics
+        val width = displayMetrics.widthPixels.toFloat()
+        val height = displayMetrics.heightPixels.toFloat()
+
+        val startX = width * startXPercent
+        val startY = height * startYPercent
+        val endX = width * endXPercent
+        val endY = height * endYPercent
+
+        val path = Path()
+        path.moveTo(startX, startY)
+        path.lineTo(endX, endY)
+
+        val builder = GestureDescription.Builder()
+        // Provide a reasonable duration for the swipe (e.g., 300ms)
+        builder.addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+        dispatchGesture(builder.build(), null, null)
+    }
+
     // --- Screen Context & Interaction ---
 
     fun swipe(direction: String) {
