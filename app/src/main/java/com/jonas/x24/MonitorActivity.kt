@@ -311,12 +311,38 @@ class MonitorActivity : AppCompatActivity() {
                 }
                 uiAutomatorActive = true
 
+                var startX = 0f
+                var startY = 0f
+
                 screenReconstructionView.setOnTouchListener { v, event ->
-                    if (uiAutomatorActive && event.action == android.view.MotionEvent.ACTION_UP) {
-                        val xPercent = event.x / v.width
-                        val yPercent = event.y / v.height
-                        sendCommand("DISPATCH_GESTURE:CLICK:$xPercent:$yPercent")
-                        android.widget.Toast.makeText(this, "Sent tap: ${String.format("%.2f", xPercent)}, ${String.format("%.2f", yPercent)}", android.widget.Toast.LENGTH_SHORT).show()
+                    if (uiAutomatorActive) {
+                        when (event.action) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                startX = event.x
+                                startY = event.y
+                            }
+                            android.view.MotionEvent.ACTION_UP -> {
+                                val endX = event.x
+                                val endY = event.y
+                                val dx = endX - startX
+                                val dy = endY - startY
+                                val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+
+                                val startXPercent = startX / v.width
+                                val startYPercent = startY / v.height
+                                val endXPercent = endX / v.width
+                                val endYPercent = endY / v.height
+
+                                // If moved less than 10 pixels, consider it a click
+                                if (distance < 10f) {
+                                    sendCommand("DISPATCH_GESTURE:CLICK:$endXPercent:$endYPercent")
+                                    android.widget.Toast.makeText(this, "Sent tap: ${String.format("%.2f", endXPercent)}, ${String.format("%.2f", endYPercent)}", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    sendCommand("DISPATCH_GESTURE:SWIPE:$startXPercent:$startYPercent:$endXPercent:$endYPercent")
+                                    android.widget.Toast.makeText(this, "Sent swipe", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     }
                     true
                 }
