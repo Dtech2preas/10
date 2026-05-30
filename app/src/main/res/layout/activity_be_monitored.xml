@@ -54,8 +54,15 @@
         android:id="@+id/btnOpenStorageSettings"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="32dp"
+        android:layout_marginBottom="16dp"
         android:text="6. Allow All Files Access" />
+
+    <Button
+        android:id="@+id/btnMinimizeNotificationSettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:text="7. Minimise Persistent Notification" />
 
     <Button
         android:id="@+id/btnStartService"
