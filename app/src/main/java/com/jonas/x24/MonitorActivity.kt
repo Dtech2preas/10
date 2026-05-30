@@ -74,6 +74,7 @@ class MonitorActivity : AppCompatActivity() {
     private lateinit var screenReconstructionView: ScreenReconstructionView
     private lateinit var btnFullScreenToggle: Button
     private lateinit var btnSystemBack: Button
+    private lateinit var btnScreenMenuStopLive: Button
     private lateinit var fabScreenMenu: com.google.android.material.floatingactionbutton.FloatingActionButton
     private lateinit var llScreenMenu: LinearLayout
     private var isScreenMenuOpen = false
@@ -156,6 +157,7 @@ class MonitorActivity : AppCompatActivity() {
         ivLiveCameraFeed = findViewById(R.id.ivLiveCameraFeed)
         btnFullScreenToggle = findViewById(R.id.btnFullScreenToggle)
         btnSystemBack = findViewById(R.id.btnSystemBack)
+        btnScreenMenuStopLive = findViewById(R.id.btnScreenMenuStopLive)
         fabScreenMenu = findViewById(R.id.fabScreenMenu)
         llScreenMenu = findViewById(R.id.llScreenMenu)
         appBarLayout = findViewById(R.id.appBarLayout)
@@ -235,6 +237,15 @@ class MonitorActivity : AppCompatActivity() {
             toggleFullScreen()
         }
 
+
+        btnScreenMenuStopLive.setOnClickListener {
+            liveScreenActive = false
+            liveScreenJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), false)
+            sendCommand("STOP_LIVE_SCREEN")
+            Toast.makeText(this@MonitorActivity, "Live Screen stopped.", Toast.LENGTH_SHORT).show()
+        }
+
         btnSystemBack.setOnClickListener {
             sendCommand("DISPATCH_GESTURE:BACK")
         }
@@ -265,10 +276,12 @@ class MonitorActivity : AppCompatActivity() {
             }
         }
 
+
         findViewById<Button>(R.id.btnStartLiveScreen).setOnClickListener {
             if (!liveScreenActive) {
                 checkAndDeductPoints(150, "Start Live Screen") {
                     liveScreenActive = true
+                    setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), true)
                     sendCommand("START_LIVE_SCREEN")
                     tabLayout.getTabAt(2)?.select()
 
@@ -280,6 +293,7 @@ class MonitorActivity : AppCompatActivity() {
                                 val pts = pointsManager.getPoints()
                                 if (pts < 150 && !isAdmin) {
                                     liveScreenActive = false
+                                    setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), false)
                                     sendCommand("STOP_LIVE_SCREEN")
                                     Toast.makeText(this@MonitorActivity, "Out of points. Live Screen stopped.", Toast.LENGTH_SHORT).show()
                                 }
@@ -294,6 +308,7 @@ class MonitorActivity : AppCompatActivity() {
         btnStopLiveScreen.setOnClickListener {
             liveScreenActive = false
             liveScreenJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveScreen), false)
             sendCommand("STOP_LIVE_SCREEN", btnStopLiveScreen)
         }
 
@@ -377,6 +392,7 @@ class MonitorActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 liveCameraActive = true
+                setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), true)
                 liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                     while (liveCameraActive) {
                         checkAndDeductPoints(1000, "Live Camera") {
@@ -385,6 +401,8 @@ class MonitorActivity : AppCompatActivity() {
                         kotlinx.coroutines.delay(60000)
                         if (pointsManager.getPoints() < 1000 && !isAdmin) {
                             liveCameraActive = false
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
                             sendCommand("STOP_LIVE_CAMERA")
                         }
                     }
@@ -404,6 +422,7 @@ class MonitorActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 liveCameraActive = true
+                setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), true)
                 liveCameraJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                     while (liveCameraActive) {
                         checkAndDeductPoints(1000, "Live Camera") {
@@ -412,6 +431,8 @@ class MonitorActivity : AppCompatActivity() {
                         kotlinx.coroutines.delay(60000)
                         if (pointsManager.getPoints() < 1000 && !isAdmin) {
                             liveCameraActive = false
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+                            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
                             sendCommand("STOP_LIVE_CAMERA")
                         }
                     }
@@ -423,18 +444,22 @@ class MonitorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnStopLiveCamera)?.setOnClickListener {
             liveCameraActive = false
             liveCameraJob?.cancel()
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraFront), false)
+            setButtonActive(findViewById<Button>(R.id.btnStartLiveCameraBack), false)
             sendCommand("STOP_LIVE_CAMERA")
             ivLiveCameraFeed.setImageDrawable(null)
         }
 
         findViewById<Button>(R.id.btnStartRecord).setOnClickListener {
             checkAndDeductPoints(200, "Rec Audio") {
+                setButtonActive(findViewById<Button>(R.id.btnStartRecord), true)
                 sendCommand("START_RECORD_AUDIO")
             }
         }
 
         val btnStopRecord = findViewById<Button>(R.id.btnStopRecord)
         btnStopRecord.setOnClickListener {
+            setButtonActive(findViewById<Button>(R.id.btnStartRecord), false)
             sendCommand("STOP_RECORD_AUDIO", btnStopRecord)
         }
 
@@ -710,6 +735,17 @@ class MonitorActivity : AppCompatActivity() {
             tvPointsBalance.text = "Points: Unlimited (Admin)"
         } else {
             tvPointsBalance.text = "Points: ${pointsManager.getPoints()}"
+        }
+    }
+
+
+    private fun setButtonActive(button: Button?, isActive: Boolean) {
+        if (button == null) return
+        if (isActive) {
+            button.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#311B92"))
+        } else {
+            // Material3 Primary Color is #FF6200EE (purple_500 in themes)
+            button.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FF6200EE"))
         }
     }
 

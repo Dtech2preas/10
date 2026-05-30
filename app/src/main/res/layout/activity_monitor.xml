@@ -419,8 +419,17 @@
                         android:textOn="UI Automator ON"
                         android:textOff="UI Automator OFF" />
 
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnScreenMenuStopLive"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Stop Live Screen" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnSystemBack"
+
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="8dp"
