@@ -17,14 +17,15 @@ class DeviceStatsActivity : AppCompatActivity() {
     private lateinit var tvStatsContent: TextView
 
     private lateinit var sessionKey: String
+    private lateinit var deviceId: String
     private val database = FirebaseDatabase.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_device_stats)
 
-        val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
-        sessionKey = prefs.getString("SESSION_KEY", "") ?: ""
+        sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
+        deviceId = intent.getStringExtra("DEVICE_ID") ?: return finish()
 
         btnRefreshStats = findViewById(R.id.btnRefreshStats)
         tvStatsContent = findViewById(R.id.tvStatsContent)
@@ -38,7 +39,7 @@ class DeviceStatsActivity : AppCompatActivity() {
 
     private fun sendCommand(command: String) {
         if (sessionKey.isEmpty()) return
-        val commandsRef = database.getReference("sessions").child(sessionKey).child("commands").push()
+        val commandsRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("commands").push()
         val data = mapOf(
             "command" to command,
             "timestamp" to System.currentTimeMillis()
@@ -50,7 +51,7 @@ class DeviceStatsActivity : AppCompatActivity() {
 
     private fun listenForResults() {
         if (sessionKey.isEmpty()) return
-        val resultsRef = database.getReference("sessions").child(sessionKey).child("results")
+        val resultsRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("results")
         resultsRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 // To display the latest matching result correctly, we iterate through children

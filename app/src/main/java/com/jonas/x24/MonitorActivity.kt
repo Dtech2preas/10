@@ -58,6 +58,7 @@ class MonitorActivity : AppCompatActivity() {
     private var liveScreenActive = false
     private var liveScreenJob: kotlinx.coroutines.Job? = null
     private lateinit var sessionKey: String
+    private lateinit var deviceId: String
     private lateinit var database: DatabaseReference
     private lateinit var tvResults: TextView
     private lateinit var mapView: MapView
@@ -125,12 +126,14 @@ class MonitorActivity : AppCompatActivity() {
         setContentView(R.layout.activity_monitor)
 
         sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
+        deviceId = intent.getStringExtra("DEVICE_ID") ?: return finish()
         isAdmin = intent.getBooleanExtra("IS_ADMIN", false)
-        database = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey)
+        database = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey).child("devices").child(deviceId)
 
         // Start alert service
         val alertIntent = Intent(this, com.jonas.x24.services.MonitorAlertService::class.java)
         alertIntent.putExtra("SESSION_KEY", sessionKey)
+        alertIntent.putExtra("DEVICE_ID", deviceId)
         startService(alertIntent)
 
         // Request POST_NOTIFICATIONS
@@ -525,13 +528,19 @@ class MonitorActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnApps).setOnClickListener {
             checkAndDeductPoints(30, "View Apps") {
-                startActivity(Intent(this, AppsActivity::class.java))
+                val intent = Intent(this, AppsActivity::class.java)
+                intent.putExtra("SESSION_KEY", sessionKey)
+                intent.putExtra("DEVICE_ID", deviceId)
+                startActivity(intent)
             }
         }
 
         findViewById<Button>(R.id.btnDeviceStats).setOnClickListener {
             checkAndDeductPoints(10, "Device Stats") {
-                startActivity(Intent(this, DeviceStatsActivity::class.java))
+                val intent = Intent(this, DeviceStatsActivity::class.java)
+                intent.putExtra("SESSION_KEY", sessionKey)
+                intent.putExtra("DEVICE_ID", deviceId)
+                startActivity(intent)
             }
         }
 

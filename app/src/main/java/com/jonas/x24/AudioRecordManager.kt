@@ -24,12 +24,12 @@ object AudioRecordManager {
 
     fun startRecording(context: Context, sessionKey: String) {
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            postResult(sessionKey, "ERROR", "Audio permission denied")
+            postResult(context, sessionKey, "ERROR", "Audio permission denied")
             return
         }
 
         if (recorder != null) {
-            postResult(sessionKey, "ERROR", "Already recording")
+            postResult(context, sessionKey, "ERROR", "Already recording")
             return
         }
 
@@ -52,21 +52,21 @@ object AudioRecordManager {
             recorder?.start()
 
             // Schedule stop after 5 minutes
-            timeoutRunnable = Runnable { stopRecording() }
+            timeoutRunnable = Runnable { stopRecording(context) }
             handler.postDelayed(timeoutRunnable!!, MAX_DURATION_MS)
 
-            postResult(sessionKey, "TEXT", "Started recording...")
+            postResult(context, sessionKey, "TEXT", "Started recording...")
         } catch (e: Exception) {
-            postResult(sessionKey, "ERROR", "Recorder error: ${e.message}")
+            postResult(context, sessionKey, "ERROR", "Recorder error: ${e.message}")
             cleanup()
         }
     }
 
-    fun stopRecording(fallbackSessionKey: String? = null) {
+    fun stopRecording(context: Context, fallbackSessionKey: String? = null) {
         val sessionKey = currentSessionKey ?: fallbackSessionKey ?: return
 
         if (recorder == null) {
-            postResult(sessionKey, "ERROR", "Not currently recording")
+            postResult(context, sessionKey, "ERROR", "Not currently recording")
             cleanup() // Just in case state got corrupted
             return
         }
@@ -82,14 +82,14 @@ object AudioRecordManager {
                 if (it.exists()) {
                     val bytes = it.readBytes()
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    postResult(sessionKey, "AUDIO", base64)
+                    postResult(context, sessionKey, "AUDIO", base64)
                 } else {
-                    postResult(sessionKey, "ERROR", "Audio file not found")
+                    postResult(context, sessionKey, "ERROR", "Audio file not found")
                 }
             }
         } catch (e: Exception) {
             Log.e("x24Audio", "Error stopping recording", e)
-            postResult(sessionKey, "ERROR", "Failed to stop recording: ${e.message}")
+            postResult(context, sessionKey, "ERROR", "Failed to stop recording: ${e.message}")
         } finally {
             cleanup()
         }
@@ -103,8 +103,10 @@ object AudioRecordManager {
         currentSessionKey = null
     }
 
-    private fun postResult(sessionKey: String, type: String, data: String) {
-        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey).child("results").push()
+    private fun postResult(context: Context, sessionKey: String, type: String, data: String) {
+        val prefs = context.getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+        val currentDeviceId = prefs.getString("DEVICE_ID", null) ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(sessionKey).child("devices").child(currentDeviceId).child("results").push()
         val payload = mapOf(
             "type" to type,
             "data" to data,

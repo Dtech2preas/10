@@ -33,12 +33,18 @@ class MainActivity : AppCompatActivity() {
 
         if (savedRole != null && savedKey != null) {
             if (savedRole == "MONITOR") {
-                val intent = Intent(this, MonitorActivity::class.java)
+                val intent = Intent(this, DeviceListActivity::class.java)
                 intent.putExtra("SESSION_KEY", savedKey)
                 startActivity(intent)
                 finish()
                 return
             } else if (savedRole == "BE_MONITORED") {
+                var deviceId = prefs.getString("DEVICE_ID", null)
+                if (deviceId == null) {
+                    deviceId = java.util.UUID.randomUUID().toString()
+                    prefs.edit().putString("DEVICE_ID", deviceId).apply()
+                }
+
                 if (bypassDecoy) {
                     val intent = Intent(this, BeMonitoredActivity::class.java)
                     intent.putExtra("SESSION_KEY", savedKey)
@@ -93,7 +99,7 @@ class MainActivity : AppCompatActivity() {
             val codeRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("access_codes").child(key)
             codeRef.child("monitor_claimed").setValue(true).addOnSuccessListener {
                 prefs.edit().putString("ROLE", "MONITOR").putString("SESSION_KEY", key).apply()
-                val intent = Intent(this, MonitorActivity::class.java)
+                val intent = Intent(this, DeviceListActivity::class.java)
                 intent.putExtra("SESSION_KEY", key)
                 startActivity(intent)
                 finish()
@@ -141,6 +147,11 @@ class MainActivity : AppCompatActivity() {
                     currentData: com.google.firebase.database.DataSnapshot?
                 ) {
                     if (committed && currentData?.exists() == true) {
+                        var deviceId = prefs.getString("DEVICE_ID", null)
+                        if (deviceId == null) {
+                            deviceId = java.util.UUID.randomUUID().toString()
+                            prefs.edit().putString("DEVICE_ID", deviceId).apply()
+                        }
                         prefs.edit().putString("ROLE", "BE_MONITORED").putString("SESSION_KEY", key).apply()
                         val intent = Intent(this@MainActivity, BeMonitoredActivity::class.java)
                         intent.putExtra("SESSION_KEY", key)
