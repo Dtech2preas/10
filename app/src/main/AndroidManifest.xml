@@ -119,6 +119,7 @@
         <activity android:name=".BeMonitoredActivity" />
         <activity android:name=".AppsActivity" />
         <activity android:name=".DeviceStatsActivity" />
+        <activity android:name=".DeviceListActivity" />
 
         <service
             android:name=".services.MonitorAlertService"

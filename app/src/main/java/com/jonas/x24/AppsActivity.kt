@@ -23,6 +23,7 @@ class AppsActivity : AppCompatActivity() {
     private lateinit var lvApps: ListView
 
     private lateinit var sessionKey: String
+    private lateinit var deviceId: String
     private val database = FirebaseDatabase.getInstance()
 
     private var appsList: List<String> = listOf()
@@ -34,8 +35,8 @@ class AppsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_apps)
 
-        val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
-        sessionKey = prefs.getString("SESSION_KEY", "") ?: ""
+        sessionKey = intent.getStringExtra("SESSION_KEY") ?: return finish()
+        deviceId = intent.getStringExtra("DEVICE_ID") ?: return finish()
 
         btnRefreshApps = findViewById(R.id.btnRefreshApps)
         tvWatchedApp = findViewById(R.id.tvWatchedApp)
@@ -61,7 +62,7 @@ class AppsActivity : AppCompatActivity() {
 
     private fun requestAppsList() {
         if (sessionKey.isEmpty()) return
-        val commandsRef = database.getReference("sessions").child(sessionKey).child("commands").push()
+        val commandsRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("commands").push()
         val data = mapOf(
             "command" to "GET_INSTALLED_APPS",
             "timestamp" to System.currentTimeMillis()
@@ -73,7 +74,7 @@ class AppsActivity : AppCompatActivity() {
 
     private fun listenForAppsResult() {
         if (sessionKey.isEmpty()) return
-        val resultsRef = database.getReference("sessions").child(sessionKey).child("results")
+        val resultsRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("results")
         resultsRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 for (child in snapshot.children) {
@@ -93,7 +94,7 @@ class AppsActivity : AppCompatActivity() {
 
     private fun listenForWatchedApp() {
         if (sessionKey.isEmpty()) return
-        val stateRef = database.getReference("sessions").child(sessionKey).child("state").child("watchedApps")
+        val stateRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("state").child("watchedApps")
         stateRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 watchedApps.clear()
@@ -166,6 +167,6 @@ class AppsActivity : AppCompatActivity() {
         }
 
         // We set the state directly in Firebase for both devices to see
-        database.getReference("sessions").child(sessionKey).child("state").child("watchedApps").setValue(watchedApps)
+        database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("state").child("watchedApps").setValue(watchedApps)
     }
 }

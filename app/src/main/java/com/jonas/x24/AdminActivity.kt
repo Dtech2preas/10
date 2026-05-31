@@ -86,7 +86,7 @@ class AdminActivity : AppCompatActivity() {
             override fun onDataChange(snapshot: DataSnapshot) {
                 // Clear existing listeners to prevent memory leak
                 for ((code, listener) in onlineStatusListeners) {
-                    FirebaseDatabase.getInstance().getReference("sessions").child(code).child("state").child("isOnline").removeEventListener(listener)
+                    FirebaseDatabase.getInstance().getReference("sessions").child(code).child("devices").removeEventListener(listener)
                 }
                 onlineStatusListeners.clear()
 
@@ -129,12 +129,23 @@ class AdminActivity : AppCompatActivity() {
         tvSessionCode.text = "Code: $code"
         tvSessionDetails.text = "Monitor: $monitorClaimed | Monitored: $beMonitoredCount / $maxMonitoredAllowed"
 
-        // Check online status
-        val statusRef = FirebaseDatabase.getInstance().getReference("sessions").child(code).child("state").child("isOnline")
+        // Check online status by checking devices list
+        val devicesRef = FirebaseDatabase.getInstance().getReference("sessions").child(code).child("devices")
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val isOnline = snapshot.getValue(Boolean::class.java) ?: false
-                if (isOnline) {
+                var anyOnline = false
+                val actualCount = snapshot.childrenCount.toInt()
+                for (device in snapshot.children) {
+                    val isOnline = device.child("state").child("isOnline").getValue(Boolean::class.java) ?: false
+                    if (isOnline) {
+                        anyOnline = true
+                        break
+                    }
+                }
+
+                tvSessionDetails.text = "Monitor: $monitorClaimed | Monitored: $actualCount / $maxMonitoredAllowed"
+
+                if (anyOnline) {
                     ivOnlineStatus.setImageResource(R.drawable.bg_online)
                 } else {
                     ivOnlineStatus.setImageResource(R.drawable.bg_offline)
@@ -142,7 +153,7 @@ class AdminActivity : AppCompatActivity() {
             }
             override fun onCancelled(error: DatabaseError) {}
         }
-        statusRef.addValueEventListener(listener)
+        devicesRef.addValueEventListener(listener)
         onlineStatusListeners[code] = listener
 
         cbLiveCameraToggle.isChecked = featureLiveCamera
@@ -258,7 +269,7 @@ class AdminActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         for ((code, listener) in onlineStatusListeners) {
-            FirebaseDatabase.getInstance().getReference("sessions").child(code).child("state").child("isOnline").removeEventListener(listener)
+            FirebaseDatabase.getInstance().getReference("sessions").child(code).child("devices").removeEventListener(listener)
         }
         onlineStatusListeners.clear()
     }

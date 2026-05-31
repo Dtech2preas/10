@@ -32,9 +32,10 @@ class MonitorAlertService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         sessionKey = intent?.getStringExtra("SESSION_KEY") ?: return START_NOT_STICKY
+        val deviceId = intent?.getStringExtra("DEVICE_ID") ?: return START_NOT_STICKY
 
         // Listen for new alerts in the Firebase database
-        val alertsRef = database.getReference("sessions").child(sessionKey).child("alerts")
+        val alertsRef = database.getReference("sessions").child(sessionKey).child("devices").child(deviceId).child("alerts")
         alertsRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 // If a new alert is added or updated, we trigger a notification

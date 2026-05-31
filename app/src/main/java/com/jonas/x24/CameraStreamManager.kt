@@ -27,12 +27,15 @@ object CameraStreamManager {
 
     private var isStreaming = false
     private var currentSessionKey: String? = null
+    private var currentDeviceId: String? = null
     private var lastFrameTime = 0L
 
     fun startStreaming(context: Context, sessionKey: String, useFrontCamera: Boolean) {
+        val prefs = context.getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+        currentDeviceId = prefs.getString("DEVICE_ID", null)
         if (isStreaming) return
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            postError("Camera permission denied.")
+            postError(context, "Camera permission denied.")
             return
         }
         currentSessionKey = sessionKey
@@ -60,7 +63,7 @@ object CameraStreamManager {
             }
 
             if (targetCameraId == null) {
-                postError("No camera found.")
+                postError(context, "No camera found.")
                 stopStreaming()
                 return
             }
@@ -106,9 +109,10 @@ object CameraStreamManager {
                                 val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
 
                                 val key = currentSessionKey
-                                if (key != null) {
+                                val devId = currentDeviceId
+                                if (key != null && devId != null) {
                                     FirebaseDatabase.getInstance().reference
-                                        .child("sessions").child(key).child("camera_stream").child("frame")
+                                        .child("sessions").child(key).child("devices").child(devId).child("camera_stream").child("frame")
                                         .setValue(base64Image)
                                 }
 
@@ -129,7 +133,7 @@ object CameraStreamManager {
             manager.openCamera(targetCameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
-                    createCaptureSession()
+                    createCaptureSession(context)
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
@@ -137,18 +141,18 @@ object CameraStreamManager {
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
-                    postError("Camera error: $error")
+                    postError(context, "Camera error: $error")
                     stopStreaming()
                 }
             }, backgroundHandler)
 
         } catch (e: Exception) {
-            postError("Camera exception: ${e.message}")
+            postError(context, "Camera exception: ${e.message}")
             stopStreaming()
         }
     }
 
-    private fun createCaptureSession() {
+    private fun createCaptureSession(context: Context) {
         try {
             val surface = imageReader?.surface ?: return
             val captureBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
@@ -165,13 +169,13 @@ object CameraStreamManager {
                         // Repeating request for stream
                         session.setRepeatingRequest(captureBuilder!!.build(), null, backgroundHandler)
                     } catch (e: Exception) {
-                        postError("Capture failed: ${e.message}")
+                        postError(context, "Capture failed: ${e.message}")
                         stopStreaming()
                     }
                 }
 
                 override fun onConfigureFailed(session: CameraCaptureSession) {
-                    postError("Capture session configuration failed.")
+                    postError(context, "Capture session configuration failed.")
                     stopStreaming()
                 }
             }, backgroundHandler)
@@ -214,9 +218,11 @@ object CameraStreamManager {
         }
     }
 
-    private fun postError(msg: String) {
+    private fun postError(context: Context, msg: String) {
         val key = currentSessionKey ?: return
-        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(key).child("results").push()
+        val prefs = context.getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
+        val currentDeviceId = prefs.getString("DEVICE_ID", null) ?: return
+        val ref = FirebaseDatabase.getInstance().reference.child("sessions").child(key).child("devices").child(currentDeviceId).child("results").push()
         val payload = mapOf(
             "type" to "ERROR",
             "data" to msg,

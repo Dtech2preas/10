@@ -25,6 +25,7 @@ class x24AccessibilityService : AccessibilityService() {
     private var hasReadScreenForApp = mutableSetOf<String>()
 
     private var sessionKey: String? = null
+    private var deviceId: String? = null
     private var isListeningToFirebase = false
 
     override fun onServiceConnected() {
@@ -34,13 +35,18 @@ class x24AccessibilityService : AccessibilityService() {
 
         val prefs = getSharedPreferences("x24_prefs", Context.MODE_PRIVATE)
         sessionKey = prefs.getString("SESSION_KEY", null)
+        deviceId = prefs.getString("DEVICE_ID", null)
+        if (deviceId == null) {
+            deviceId = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("DEVICE_ID", deviceId).apply()
+        }
         setupFirebaseListener()
     }
 
     private fun setupFirebaseListener() {
-        if (sessionKey == null || isListeningToFirebase) return
+        if (sessionKey == null || deviceId == null || isListeningToFirebase) return
         isListeningToFirebase = true
-        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("state")
+        val stateRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("devices").child(deviceId!!).child("state")
 
         stateRef.child("watchedApps").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -67,7 +73,7 @@ class x24AccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString()
-            if (packageName != null && watchedApps.contains(packageName) && sessionKey != null) {
+            if (packageName != null && watchedApps.contains(packageName) && sessionKey != null && deviceId != null) {
                 val currentTime = System.currentTimeMillis()
                 val lastAlert = lastAlertTime[packageName] ?: 0L
 
@@ -75,7 +81,7 @@ class x24AccessibilityService : AccessibilityService() {
                 if (currentTime - lastAlert > 5 * 60 * 1000) {
                     lastAlertTime[packageName] = currentTime
 
-                    val alertsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("alerts")
+                    val alertsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("devices").child(deviceId!!).child("alerts")
                     val alertData = mapOf(
                         "latestAlert" to "Watched App Opened: $packageName",
                         "timestamp" to currentTime
@@ -87,7 +93,7 @@ class x24AccessibilityService : AccessibilityService() {
                         CoroutineScope(Dispatchers.IO).launch {
                             delay(1500)
                             val contextData = getScreenContext()
-                            val resultsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("results").push()
+                            val resultsRef = FirebaseDatabase.getInstance().getReference("sessions").child(sessionKey!!).child("devices").child(deviceId!!).child("results").push()
                             resultsRef.setValue(mapOf(
                                 "type" to "READ_SCREEN",
                                 "data" to "Screen Context:\n$contextData",
