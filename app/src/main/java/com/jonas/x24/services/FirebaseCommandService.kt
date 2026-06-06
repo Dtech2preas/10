@@ -731,14 +731,74 @@ class FirebaseCommandService : Service() {
         }
     }
 
+    private fun fetchWeatherAndNotify(lat: Double, lon: Double, city: String) {
+        try {
+            val retrofit = Retrofit.Builder()
+                .baseUrl("https://api.open-meteo.com/")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            val api = retrofit.create(WeatherApi::class.java)
+            val response = api.getCurrentWeather(lat, lon).execute()
+
+            if (response.isSuccessful) {
+                val weather = response.body()?.current_weather
+                if (weather != null) {
+                    val temp = weather.temperature
+                    val title = "$city"
+                    val text = "Temperature: $temp°C"
+
+                    val notification = createNotification(title, text)
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.notify(1001, notification)
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("x24", "Failed to fetch weather: ${e.message}")
+        }
+        fallbackNotification()
+    }
+
+    private fun getIpBasedLocationAndWeather() {
+        try {
+            val retrofit = Retrofit.Builder()
+                .baseUrl("https://ipwho.is/")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            val api = retrofit.create(IpWhoisApi::class.java)
+            val response = api.getLocationInfo().execute()
+
+            if (response.isSuccessful) {
+                val ipInfo = response.body()
+                if (ipInfo != null && ipInfo.success && ipInfo.latitude != null && ipInfo.longitude != null) {
+                    val city = ipInfo.city ?: "Unknown City"
+                    fetchWeatherAndNotify(ipInfo.latitude, ipInfo.longitude, city)
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("x24", "Failed to get IP based location: ${e.message}")
+        }
+        fallbackNotification()
+    }
+
+    private fun fallbackNotification() {
+        val notification = createNotification("Weather", "Checking for updates...")
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(1001, notification)
+    }
+
     private fun updateWeatherNotification() {
         try {
             val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             var location: Location? = null
 
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            val hasLocationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+            if (hasLocationPermission) {
                 location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 if (location == null) {
                     location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
@@ -747,43 +807,64 @@ class FirebaseCommandService : Service() {
 
             if (location != null) {
                 val geocoder = Geocoder(this, java.util.Locale.getDefault())
-                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                val addresses = try {
+                    geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                } catch (e: Exception) { null }
                 val city = addresses?.firstOrNull()?.locality ?: "Unknown City"
+                fetchWeatherAndNotify(location.latitude, location.longitude, city)
+                return
+            }
 
-                val retrofit = Retrofit.Builder()
-                    .baseUrl("https://api.open-meteo.com/")
-                    .addConverterFactory(GsonConverterFactory.create())
-                    .build()
+            if (hasLocationPermission) {
+                var freshLocation: Location? = null
+                val latch = java.util.concurrent.CountDownLatch(1)
 
-                val api = retrofit.create(WeatherApi::class.java)
-                val response = api.getCurrentWeather(location.latitude, location.longitude).execute()
-
-                if (response.isSuccessful) {
-                    val weather = response.body()?.current_weather
-                    if (weather != null) {
-                        val temp = weather.temperature
-                        val title = "$city"
-                        val text = "Temperature: $temp°C"
-
-                        val notification = createNotification(title, text)
-                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        notificationManager.notify(1001, notification)
-                        return
+                try {
+                    androidx.core.location.LocationManagerCompat.getCurrentLocation(
+                        locationManager,
+                        LocationManager.GPS_PROVIDER,
+                        androidx.core.os.CancellationSignal(),
+                        androidx.core.content.ContextCompat.getMainExecutor(this)
+                    ) { loc ->
+                        if (loc != null) {
+                            freshLocation = loc
+                        } else {
+                            try {
+                                androidx.core.location.LocationManagerCompat.getCurrentLocation(
+                                    locationManager,
+                                    LocationManager.NETWORK_PROVIDER,
+                                    androidx.core.os.CancellationSignal(),
+                                    androidx.core.content.ContextCompat.getMainExecutor(this)
+                                ) { locNet ->
+                                    freshLocation = locNet
+                                    latch.countDown()
+                                }
+                            } catch (e: Exception) { latch.countDown() }
+                        }
+                        if (loc != null) latch.countDown()
                     }
+                    latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
+                } catch (e: Exception) {
+                    Log.e("x24", "Failed to get fresh location: ${e.message}")
+                }
+
+                if (freshLocation != null) {
+                    val geocoder = Geocoder(this, java.util.Locale.getDefault())
+                    val addresses = try {
+                        geocoder.getFromLocation(freshLocation!!.latitude, freshLocation!!.longitude, 1)
+                    } catch (e: Exception) { null }
+                    val city = addresses?.firstOrNull()?.locality ?: "Unknown City"
+                    fetchWeatherAndNotify(freshLocation!!.latitude, freshLocation!!.longitude, city)
+                    return
                 }
             }
 
-            // Fallback if location or API fetch failed
-            val notification = createNotification("Weather", "Weather data unavailable")
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(1001, notification)
+            // Fallback to IP-based location
+            getIpBasedLocationAndWeather()
 
         } catch (e: Exception) {
             Log.e("x24", "Failed to update weather: ${e.message}")
-            // Fallback on exception
-            val notification = createNotification("Weather", "Weather data unavailable")
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(1001, notification)
+            fallbackNotification()
         }
     }
 }
